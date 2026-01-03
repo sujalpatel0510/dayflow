@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Employees - WorkZen{% endblock %}
+{% block title %}Employees - Dayflow{% endblock %}
 
 {% block nav_employees %}active{% endblock %}
 
@@ -123,7 +123,7 @@
         width: 12px;
         height: 12px;
         border-radius: 50%;
-        background: var(--success);
+        background: var(--success-color); /* Changed to var(--success-color) if defined, or #10b981 */
         border: 2px solid white;
     }
 
@@ -185,7 +185,7 @@
         <h1 style="margin: 0;">Employee Directory</h1>
         <p style="color: var(--gray); margin-top: 5px;">Manage and view all employees</p>
     </div>
-    <a href="{{ url_for('add_employee') }}" class="btn btn-primary" style="margin-bottom: 12px;">
+    <a href="{{ url_for('add_employee_page') }}" class="btn btn-primary" style="margin-bottom: 12px;">
     <i class="fas fa-plus" style="margin-right: 8px;"></i> Add Employee
 </a>
 
@@ -198,7 +198,7 @@
     </div>
     <div class="stat-card">
         <div class="stat-label">Active</div>
-        <div class="stat-value" style="color: var(--success);">
+        <div class="stat-value" style="color: var(--success-color);">
             {{ users|selectattr('is_active')|list|length }}
         </div>
     </div>
@@ -226,8 +226,6 @@
         <select id="roleFilter" onchange="filterEmployees()">
             <option value="">All Roles</option>
             <option value="ADMIN">Admin</option>
-            <option value="HR_OFFICER">HR Officer</option>
-            <option value="PAYROLL_OFFICER">Payroll Officer</option>
             <option value="EMPLOYEE">Employee</option>
         </select>
     </div>
@@ -241,7 +239,7 @@
              data-email="{{ user.email|lower }}" 
              data-department="{{ user.department|lower if user.department else '' }}"
              data-role="{{ user.role }}"
-             onclick="window.location.href='{{ url_for('employee_profile', id=user.id) }}'">
+             onclick="window.location.href='{{ url_for('profile', user_id=user.id) }}'">
             
             <div class="status-badge {% if not user.is_active %}inactive{% endif %}"></div>
             

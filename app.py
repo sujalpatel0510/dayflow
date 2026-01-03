@@ -15,6 +15,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from flask import send_file
 import csv
+from flask_login import UserMixin, login_required, current_user, LoginManager, login_user, logout_user
 
 #git testing(sujal)
 load_dotenv()
@@ -58,81 +59,85 @@ class Leave(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class User(db.Model):
+class User(db.Model, UserMixin):  # Ensure UserMixin is inherited for Flask-Login
     """User model for Admin, HR Officer, Payroll Officer, and Employees"""
     __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True)
     
-    # --- CHANGED: Split Name for new Signup ---
+    # --- Authentication & Name ---
     first_name = db.Column(db.String(50), nullable=False)
     last_name = db.Column(db.String(50), nullable=False)
-    
-    # --- Authentication ---
     email = db.Column(db.String(255), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False) # Renamed to match your signup logic
+    password_hash = db.Column(db.String(255), nullable=False)
     
     # --- Contact ---
     phone = db.Column(db.String(20))
     
     # --- Job Details ---
-    role = db.Column(db.String(50), default='employee')  
+    role = db.Column(db.String(50), default='EMPLOYEE')  # Uppercase usually safer for comparison
     department = db.Column(db.String(100))
     job_position = db.Column(db.String(100))
     job_title = db.Column(db.String(100))
     manager_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     
     # --- Contract & Location ---
-    employment_type = db.Column(db.String(50))  # Full-time, Part-time
-    contract_type = db.Column(db.String(50))    # Permanent, Contract
+    employment_type = db.Column(db.String(50))
+    contract_type = db.Column(db.String(50))
     work_address = db.Column(db.String(255))
     work_location = db.Column(db.String(100))
     time_zone = db.Column(db.String(50))
     
-    # --- Payroll ---
-    wage_type = db.Column(db.String(50))        # Fixed Wage, Hourly
-    wage = db.Column(db.Float)                 # Monthly/Hourly wage
-    basic_salary = db.Column(db.Float)
+    # --- Payroll & Salary ---
+    wage_type = db.Column(db.String(50))    # Fixed Wage, Hourly
+    basic_salary = db.Column(db.Float)      # This matches your form's "basic_salary"
+    
+    # --- NEW: Bank Information (Added to fix your error) ---
+    bank_name = db.Column(db.String(100))
+    bank_account_no = db.Column(db.String(50))
+    ifsc_code = db.Column(db.String(20))
+    pan_number = db.Column(db.String(20))
     
     # --- Shifts ---
-    working_hours = db.Column(db.String(50))   # e.g., "40 hours/week"
-    shift_time = db.Column(db.String(100))     # e.g., "9:00 AM - 6:00 PM"
+    working_hours = db.Column(db.String(50))
+    shift_time = db.Column(db.String(100))
     
     # --- Personal Info ---
     date_of_joining = db.Column(db.Date)
     date_of_birth = db.Column(db.Date)
     gender = db.Column(db.String(20))
     nationality = db.Column(db.String(100))
+    marital_status = db.Column(db.String(20)) # Added this as it's often in forms
     
     # --- Emergency Contact ---
     emergency_contact_name = db.Column(db.String(255))
     emergency_contact_relation = db.Column(db.String(100))
     emergency_contact_phone = db.Column(db.String(20))
     
-    # --- System Fields ---
+    # --- System Fields (Auto-generated) ---
+    # Login ID (e.g., EMP001)
+    login_id = db.Column(db.String(20), unique=True) 
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # --- Relationships ---
-    # Note: Ensure 'Leave', 'Payslip', 'Attendance' models are defined in your file
-    leaves = db.relationship('Leave', backref='employee', lazy=True, foreign_keys='[Leave.user_id]', cascade='save-update')
-    payslips = db.relationship('Payslip', backref='employee', lazy=True, cascade='save-update')
-    attendances = db.relationship('Attendance', backref='employee', lazy=True, cascade='save-update')
+    # (Ensure these related Models exist in your file, or comment them out if not)
+    # leaves = db.relationship('Leave', backref='employee', lazy=True)
+    # payslips = db.relationship('Payslip', backref='employee', lazy=True)
+    # attendances = db.relationship('Attendance', backref='employee', lazy=True)
 
-    # --- HELPER: Makes 'user.full_name' work in templates ---
+    # --- Properties & Methods ---
     @property
     def full_name(self):
+        """Helper to get full name without storing it as a column"""
         return f"{self.first_name} {self.last_name}"
 
-    # --- Password Methods ---
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-    
-    
 
 class Attendance(db.Model):
     """Attendance tracking model"""
@@ -178,6 +183,7 @@ class Payslip(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    employee = db.relationship('User', backref='payslips')
     payroll_month = db.Column(db.Date, nullable=False)
     basic_salary = db.Column(db.Float)
     hra = db.Column(db.Float)  # House Rent Allowance
@@ -708,7 +714,7 @@ def timeoff():
 @app.route('/employees/add')
 @login_required
 @role_required('admin', 'hr_officer') # Changed to lowercase
-def add_employee():
+def add_employee_page():
     """Add new employee page (Admin or HR Officer only)"""
     return render_template('add_employee.html')
 
@@ -723,51 +729,49 @@ def add_employee_api():
         if User.query.filter_by(email=data.get('email')).first():
             return jsonify({'error': 'Email already exists'}), 400
             
-        # 2. Get the password from the form
+        # 2. Get and validate password
         password = data.get('password')
         if not password:
             return jsonify({'error': 'Password is required'}), 400
 
-        # 3. Create the new User object
+        # 3. Create User
+        # REMOVED 'full_name' from here because it is auto-calculated
         new_user = User(
             first_name=data.get('first_name'),
             last_name=data.get('last_name'),
-            full_name=f"{data.get('first_name')} {data.get('last_name')}",
+            # full_name=...  <-- DELETED THIS LINE
             email=data.get('email'),
             phone=data.get('phone'),
             
-            # --- IMPORTANT: Hash the password ---
             password_hash=generate_password_hash(password),
             
             role=data.get('role', 'EMPLOYEE'),
             department=data.get('department'),
             job_title=data.get('job_title'),
-            job_position=data.get('job_position'), 
+            # job_position might be duplicate of title, keeping strictly what form sends
+            job_position=data.get('job_title'), 
             
             employment_type=data.get('employment_type'),
+            # Handle date parsing safely
             date_of_joining=datetime.strptime(data.get('date_of_joining'), '%Y-%m-%d').date() if data.get('date_of_joining') else None,
+            
             work_location=data.get('work_location'),
             work_address=data.get('work_address'),
             shift_time=data.get('shift_time'),
             
-            # Salary Info
             wage_type=data.get('wage_type'),
             basic_salary=float(data.get('basic_salary') or 0),
             
-            # Bank Info
             bank_name=data.get('bank_name'),
             bank_account_no=data.get('bank_account_no'),
             ifsc_code=data.get('ifsc_code'),
             pan_number=data.get('pan_number'),
             
-            # Emergency Contact
             emergency_contact_name=data.get('emergency_contact_name'),
             emergency_contact_relation=data.get('emergency_contact_relation'),
             emergency_contact_phone=data.get('emergency_contact_phone'),
             
-            # Auto-generate a login ID (Example: EMP + Random Number or Count)
-            login_id=f"EMP{User.query.count() + 101:03d}", 
-            
+            login_id=f"EMP{User.query.count() + 101:03d}",
             is_active=True,
             created_at=datetime.now()
         )
@@ -779,7 +783,6 @@ def add_employee_api():
         
     except Exception as e:
         db.session.rollback()
-        # Print error to console for debugging
         print(f"Error creating employee: {e}")
         return jsonify({'error': str(e)}), 500
     
@@ -1452,22 +1455,24 @@ def export_payslips():
 # --- Profile & Settings Routes ---
 
 @app.route('/profile')
+@app.route('/profile/<int:user_id>')
 @login_required
-def profile():
-    """Employee profile page (own profile)"""
-    user = User.query.get(session.get('user_id'))
+def profile(user_id=None):
+    current_user = User.query.get(session['user_id'])
 
-    salary_adjustments = SalaryAdjustment.query.filter_by(user_id=user.id).order_by(
-        SalaryAdjustment.adjustment_date.desc()
-    ).all()
-    badges = Badge.query.filter_by(user_id=user.id).all()
-    certifications = Certification.query.filter_by(user_id=user.id).all()
+    if user_id:
+        # CASE 1: Viewing a specific employee (Clicked from list)
+        user_to_view = User.query.get_or_404(user_id)
+    else:
+        # CASE 2: Clicking "My Profile" in the navbar (No ID)
+        user_to_view = current_user
 
-    return render_template('profile.html',
-                           user=user,
-                           salary_adjustments=salary_adjustments,
-                           badges=badges,
-                           certifications=certifications)
+    # SECURITY: Prevent normal employees from viewing others
+    if current_user.role == 'EMPLOYEE' and current_user.id != user_to_view.id:
+        flash("You are not authorized to view this profile.", "error")
+        return redirect(url_for('dashboard'))
+
+    return render_template('profile.html', user=user_to_view)
 
 @app.route('/settings')
 @login_required

@@ -48,39 +48,43 @@
         }
 
         .logo {
-            padding: 20px 24px;
+            padding: 10px 10px;      
             border-bottom: 1px solid var(--border);
-            margin-bottom: 6px;
+            margin-bottom: 5px;      
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 12px;
+            text-align: center;
+            gap: 2px;                
         }
 
         .logo-image {
-            width: 50px; /* Adjusted size for the new logo */
-            height: 50px;
+            width: 140px;            
+            height: 140px;
             object-fit: contain;
+            display: block;          
+            margin-bottom: 0;
         }
 
         .logo-text {
-            flex: 1;
+            width: 100%;
         }
 
         .logo h2 {
-            color: #0F3D5B; /* Darker blue based on Dayflow logo */
-            font-size: 22px;
+            color: #0F3D5B;
+            font-size: 20px;
             font-weight: 700;
-            letter-spacing: 0.5px;
             margin: 0;
+            line-height: 1.1;        
         }
 
         .logo p {
-            font-size: 10px;
+            font-size: 11px;
             color: var(--gray);
-            margin: 2px 0 0 0;
-            line-height: 1.2;
+            margin: 2px 0 0 0;       
             text-transform: uppercase;
         }
+
 
         .nav-menu {
             list-style: none;
@@ -401,7 +405,7 @@
                 <p>Human Resource Management System</p>
             </div>
         </div>
-        <nav>
+<nav>
             <ul class="nav-menu">
                 <li class="nav-item">
                     <a href="{{ url_for('dashboard') }}" class="nav-link {% block nav_dashboard %}{% endblock %}">
@@ -414,7 +418,32 @@
                     </a>
                 </li>
 
-                {% if session['role'] == 'admin' or session['role'] == 'hr_officer' %}
+                <li class="nav-item">
+                    <a href="{{ url_for('manage_leave') }}" class="nav-link {% block nav_leave %}{% endblock %}">
+                        <span class="icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                            </svg>
+                        </span>
+                        <span class="text">Leaves</span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ url_for('attendance') }}" class="nav-link {% block nav_attendance %}{% endblock %}">
+                        <span>
+                            <svg fill="none" stroke="#6b7280" width="20" height="20" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </span>
+                        Attendance
+                    </a>
+                </li>
+
+                {% if session['role']|lower == 'admin' or session['role']|lower == 'hr_officer' %}
                 
                 <li class="nav-item">
                     <a href="{{ url_for('employee_list') }}" class="nav-link {% block nav_employees %}{% endblock %}">
@@ -424,17 +453,6 @@
                             </svg>
                         </span>
                         Manage Employees
-                    </a>
-                </li>
-
-                <li class="nav-item">
-                    <a href="{{ url_for('manage_leave') }}" class="nav-link {% block nav_leave %}{% endblock %}">
-                        <span>
-                            <svg fill="none" stroke="#6b7280" width="20" height="20" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </span>
-                        Leave Requests
                     </a>
                 </li>
 
@@ -460,32 +478,6 @@
                         Reports
                     </a>
                 </li>
-                {% endif %}
-
-                {% if session['role'] == 'employee' %}
-                
-                <li class="nav-item">
-                    <a href="{{ url_for('attendance') }}" class="nav-link {% block nav_attendance %}{% endblock %}">
-                        <span>
-                            <svg fill="none" stroke="#6b7280" width="20" height="20" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                            </svg>
-                        </span>
-                        My Attendance
-                    </a>
-                </li>
-
-                <li class="nav-item">
-                    <a href="{{ url_for('manage_leave') }}" class="nav-link {% block nav_leave_emp %}{% endblock %}">
-                        <span>
-                            <svg fill="none" stroke="#6b7280" width="20" height="20" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                            </svg>
-                        </span>
-                        Leaves & Applications
-                    </a>
-                </li>
-                
                 {% endif %}
 
                 <li class="nav-item">
