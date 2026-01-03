@@ -715,99 +715,72 @@ def add_employee():
 @app.route('/api/employees/add', methods=['POST'])
 @login_required
 @role_required('ADMIN', 'HR_OFFICER')
-def create_employee():
-    """Create new employee (Admin or HR Officer only)"""
+def add_employee_api():
     try:
         data = request.get_json()
         
-        # Check if email already exists
+        # 1. Check if email already exists
         if User.query.filter_by(email=data.get('email')).first():
             return jsonify({'error': 'Email already exists'}), 400
-        
-        # Validate Names
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        
-        if not first_name or not last_name:
-            return jsonify({'error': 'First name and last name are required'}), 400
-        
-        temp_password = generate_temp_password()
-        
-        # Parse date fields
-        date_of_birth = None
-        if data.get('date_of_birth'):
-            date_of_birth = datetime.strptime(data.get('date_of_birth'), '%Y-%m-%d').date()
-        
-        date_of_joining = datetime.now().date()
-        if data.get('date_of_joining'):
-            date_of_joining = datetime.strptime(data.get('date_of_joining'), '%Y-%m-%d').date()
-        
-        # Create new user with CORRECT fields
-        user = User(
-            first_name=first_name,  # Matches User model
-            last_name=last_name,    # Matches User model
+            
+        # 2. Get the password from the form
+        password = data.get('password')
+        if not password:
+            return jsonify({'error': 'Password is required'}), 400
+
+        # 3. Create the new User object
+        new_user = User(
+            first_name=data.get('first_name'),
+            last_name=data.get('last_name'),
+            full_name=f"{data.get('first_name')} {data.get('last_name')}",
             email=data.get('email'),
             phone=data.get('phone'),
+            
+            # --- IMPORTANT: Hash the password ---
+            password_hash=generate_password_hash(password),
+            
             role=data.get('role', 'EMPLOYEE'),
             department=data.get('department'),
-            job_position=data.get('job_position'),
             job_title=data.get('job_title'),
+            job_position=data.get('job_position'), 
+            
             employment_type=data.get('employment_type'),
-            contract_type=data.get('contract_type'),
-            date_of_joining=date_of_joining,
-            date_of_birth=date_of_birth,
-            gender=data.get('gender'),
-            nationality=data.get('nationality'),
+            date_of_joining=datetime.strptime(data.get('date_of_joining'), '%Y-%m-%d').date() if data.get('date_of_joining') else None,
             work_location=data.get('work_location'),
             work_address=data.get('work_address'),
-            time_zone=data.get('time_zone'),
             shift_time=data.get('shift_time'),
-            working_hours=data.get('working_hours'),
+            
+            # Salary Info
             wage_type=data.get('wage_type'),
-            wage=float(data.get('wage')) if data.get('wage') else None,
-            basic_salary=float(data.get('basic_salary')) if data.get('basic_salary') else None,
+            basic_salary=float(data.get('basic_salary') or 0),
+            
+            # Bank Info
+            bank_name=data.get('bank_name'),
+            bank_account_no=data.get('bank_account_no'),
+            ifsc_code=data.get('ifsc_code'),
+            pan_number=data.get('pan_number'),
+            
+            # Emergency Contact
             emergency_contact_name=data.get('emergency_contact_name'),
             emergency_contact_relation=data.get('emergency_contact_relation'),
             emergency_contact_phone=data.get('emergency_contact_phone'),
-            is_active=True
-            # Removed login_id and full_name as they don't exist in the model
+            
+            # Auto-generate a login ID (Example: EMP + Random Number or Count)
+            login_id=f"EMP{User.query.count() + 101:03d}", 
+            
+            is_active=True,
+            created_at=datetime.now()
         )
         
-        user.set_password(temp_password)
-        db.session.add(user)
+        db.session.add(new_user)
         db.session.commit()
         
-        # Create default leave balances
-        current_year = datetime.now().year
-        leave_types = [
-            {'type': 'Annual', 'days': 20},
-            {'type': 'Sick', 'days': 10},
-            {'type': 'Casual', 'days': 5}
-        ]
-        
-        for leave in leave_types:
-            balance = LeaveBalance(
-                user_id=user.id,
-                leave_type=leave['type'],
-                total_days=leave['days'],
-                used_days=0,
-                remaining_days=leave['days'],
-                year=current_year
-            )
-            db.session.add(balance)
-        
-        db.session.commit()
-        
-        return jsonify({
-            'message': 'Employee added successfully',
-            'employee_id': user.id,
-            'temp_password': temp_password
-        }), 201
+        return jsonify({'message': 'Employee created successfully!'}), 201
         
     except Exception as e:
         db.session.rollback()
-        # It is good practice to log the error here
-        print(f"Error adding employee: {str(e)}")
+        # Print error to console for debugging
+        print(f"Error creating employee: {e}")
         return jsonify({'error': str(e)}), 500
     
 @app.route('/employee/<int:id>')
@@ -827,7 +800,7 @@ def employee_profile(id):
     badges = []
     certifications = []
     
-    return render_template('employee_profile.html', 
+    return render_template('profile.html', 
                          user=employee, 
                          salary_adjustments=salary_adjustments,
                          badges=badges,

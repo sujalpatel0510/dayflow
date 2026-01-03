@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Add Employee - WorkZen{% endblock %}
+{% block title %}Add Employee - Dayflow{% endblock %}
 
 {% block nav_employees %}active{% endblock %}
 
@@ -64,7 +64,7 @@
     }
 
     .form-group label .required {
-        color: var(--danger);
+        color: var(--danger-color); /* Fixed variable name */
         margin-left: 3px;
     }
 
@@ -140,14 +140,12 @@
         background: #d4edda;
         color: #155724;
         border: 1px solid #c3e6cb;
-        display: block;
     }
 
     .alert.error {
         background: #f8d7da;
         color: #721c24;
         border: 1px solid #f5c6cb;
-        display: block;
     }
 
     .loading {
@@ -158,6 +156,19 @@
 
     .loading.show {
         display: block;
+    }
+
+    /* === NEW STYLES FOR PASSWORD TOGGLE === */
+    .password-wrapper {
+        position: relative;
+    }
+    .toggle-password {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: var(--gray);
     }
 </style>
 {% endblock %}
@@ -188,8 +199,18 @@
                 </div>
                 <div class="form-group">
                     <label>Email <span class="required">*</span></label>
-                    <input type="email" name="email" required placeholder="employee@workzen.com">
+                    <input type="email" name="email" required placeholder="employee@dayflow.com">
                 </div>
+
+                <div class="form-group">
+                    <label>Login Password <span class="required">*</span></label>
+                    <div class="password-wrapper">
+                        <input type="password" name="password" id="passwordField" required placeholder="Set login password" minlength="6">
+                        <i class="fas fa-eye toggle-password" onclick="togglePassword()"></i>
+                    </div>
+                    <small>Minimum 6 characters</small>
+                </div>
+
                 <div class="form-group">
                     <label>Phone</label>
                     <input type="tel" name="phone" placeholder="+91-XXXXXXXXXX">
@@ -258,8 +279,6 @@
                     <select name="role" required>
                         <option value="">Select Role</option>
                         <option value="EMPLOYEE">Employee</option>
-                        <option value="HR_OFFICER">HR Officer</option>
-                        <option value="PAYROLL_OFFICER">Payroll Officer</option>
                         <option value="ADMIN">Admin</option>
                     </select>
                     <small>Define the user's access level</small>
@@ -330,7 +349,7 @@
                     <input type="number" name="basic_salary" step="0.01" placeholder="Enter basic salary">
                     <small>This is usually 50% of the gross wage</small>
                 </div>
-                </div>
+            </div>
         </div>
 
         <div class="form-section">
@@ -365,6 +384,22 @@
 
 {% block extra_js %}
 <script>
+    // === NEW FUNCTION FOR PASSWORD TOGGLE ===
+    function togglePassword() {
+        const passwordInput = document.getElementById('passwordField');
+        const icon = document.querySelector('.toggle-password');
+        
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            passwordInput.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    }
+
     async function handleSubmit(event) {
         event.preventDefault();
         

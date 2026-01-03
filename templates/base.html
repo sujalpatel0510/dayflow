@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}WorkZen - HRMS{% endblock %}</title>
+    <title>{% block title %}Dayflow - HRMS{% endblock %}</title>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
@@ -57,8 +57,8 @@
         }
 
         .logo-image {
-            width: 45px;
-            height: 45px;
+            width: 50px; /* Adjusted size for the new logo */
+            height: 50px;
             object-fit: contain;
         }
 
@@ -67,17 +67,19 @@
         }
 
         .logo h2 {
-            color: var(--primary-color);
-            font-size: 24px;
+            color: #0F3D5B; /* Darker blue based on Dayflow logo */
+            font-size: 22px;
             font-weight: 700;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             margin: 0;
         }
 
         .logo p {
-            font-size: 12px;
+            font-size: 10px;
             color: var(--gray);
             margin: 2px 0 0 0;
+            line-height: 1.2;
+            text-transform: uppercase;
         }
 
         .nav-menu {
@@ -386,23 +388,17 @@
                 left: 0;
             }
         }
-        .logo-image {
-  width: 85px;
-  height: 85px;
-  object-fit: contain;
-}
 
         {% block extra_css %}{% endblock %}
     </style>
 </head>
 <body>
-    <!-- Sidebar -->
     <aside class="sidebar">
         <div class="logo">
-            <img src="{{ url_for('static', filename='images/workzen_logo.jpg') }}" alt="WorkZen Logo" class="logo-image">
+            <img src="{{ url_for('static', filename='images/dayflow_logo.png') }}" alt="Dayflow Logo" class="logo-image">
             <div class="logo-text">
-                <h2>WorkZen</h2>
-                <p>HR Management System</p>
+                <h2>Dayflow</h2>
+                <p>Human Resource Management System</p>
             </div>
         </div>
         <nav>
@@ -507,7 +503,6 @@
         </nav>
     </aside>
 
-    <!-- Header -->
     <header class="header">
         <div class="header-left">
             <h1>{% block page_title %}Dashboard{% endblock %}</h1>
@@ -534,10 +529,8 @@
         </div>
     </header>
 
-    <!-- Main Content -->
     <main class="main-content">
         {% block content %}
-        <!-- Page content goes here -->
         {% endblock %}
     </main>
 
