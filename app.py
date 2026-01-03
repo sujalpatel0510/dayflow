@@ -138,101 +138,21 @@ class Attendance(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    attendance_date = db.Column(db.Date, nullable=False)
-    check_in = db.Column(db.Time)
-    check_out = db.Column(db.Time)
+    
+    attendance_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    
+    # Changed to DateTime to make math easier (e.g., 9:00 AM to 5:00 PM)
+    check_in = db.Column(db.DateTime)
+    check_out = db.Column(db.DateTime)
+    
     status = db.Column(db.String(50))  # Present, Absent, Late
     working_hours = db.Column(db.Float)
     remarks = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Ensure one record per user per day
     __table_args__ = (db.UniqueConstraint('user_id', 'attendance_date', name='uq_user_date'),)
 
-# --- LEAVE MANAGEMENT ROUTES (Updated for your Model) ---
-
-@app.route('/leaves')
-def manage_leave():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        
-    user = User.query.get(session['user_id'])
-    
-    if user.role in ['admin', 'hr_officer']:
-        # Admins see all leaves, ordered by newest first
-        leaves = Leave.query.order_by(Leave.created_at.desc()).all()
-    else:
-        # Employees see only their own leaves
-        leaves = Leave.query.filter_by(user_id=user.id).order_by(Leave.created_at.desc()).all()
-
-    return render_template('leaves.html', leaves=leaves, user=user)
-
-@app.route('/apply_leave', methods=['POST'])
-def apply_leave():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        
-    user_id = session['user_id']
-    leave_type = request.form.get('leave_type')
-    start_date_str = request.form.get('start_date')
-    end_date_str = request.form.get('end_date')
-    reason = request.form.get('reason')
-    
-    try:
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-        
-        # Calculate number of days
-        delta = end_date - start_date
-        number_of_days = delta.days + 1
-        
-        if number_of_days < 1:
-            flash('End date must be after start date', 'error')
-            return redirect(url_for('manage_leave'))
-            
-    except ValueError:
-        flash('Invalid date format', 'error')
-        return redirect(url_for('manage_leave'))
-
-    new_leave = Leave(
-        user_id=user_id,
-        leave_type=leave_type,
-        start_date=start_date,
-        end_date=end_date,
-        reason=reason,
-        number_of_days=number_of_days, # Saving the calculated days
-        status='Pending'
-    )
-    
-    db.session.add(new_leave)
-    db.session.commit()
-    
-    flash('Leave request submitted successfully!', 'success')
-    return redirect(url_for('manage_leave'))
-
-@app.route('/approve_leave/<int:leave_id>/<action>')
-def approve_leave(leave_id, action):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    current_user = User.query.get(session['user_id'])
-    
-    # Security: Only Admin/HR can approve
-    if current_user.role not in ['admin', 'hr_officer']:
-        flash('Unauthorized action', 'error')
-        return redirect(url_for('manage_leave'))
-
-    leave = Leave.query.get_or_404(leave_id)
-    
-    if action == 'approve':
-        leave.status = 'Approved'
-        leave.approved_by = current_user.id  # Track who approved it
-    elif action == 'reject':
-        leave.status = 'Rejected'
-        leave.approved_by = current_user.id
-        
-    db.session.commit()
-    flash(f'Leave request {action}d!', 'success')
-    return redirect(url_for('manage_leave'))
 
 
 class LeaveBalance(db.Model):
@@ -328,13 +248,7 @@ class Report(db.Model):
 
 # ======================== UTILITY FUNCTIONS ========================
 
-def generate_login_id(first_name, last_name, year):
-    """Generate unique login ID"""
-    name_abbr = (first_name[:2] + last_name[:2]).upper()
-    year_str = str(year)
-    count = User.query.filter(User.login_id.ilike(f"{name_abbr}{year_str}%")).count()
-    serial = str(count + 1).zfill(4)
-    return f"{name_abbr}{year_str}{serial}"
+
 
 def generate_temp_password(length=12):
     """Generate secure temporary password"""
@@ -355,8 +269,22 @@ def role_required(*roles):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             user = User.query.get(session.get('user_id'))
-            if not user or user.role not in roles:
-                return redirect(url_for('login')), 403
+            
+            # Fix 1: Handle case sensitivity and list wrapping
+            # Flatten roles if a list was passed accidentally (e.g. ['admin'])
+            required_roles = []
+            for r in roles:
+                if isinstance(r, list):
+                    required_roles.extend([x.lower() for x in r])
+                else:
+                    required_roles.append(r.lower())
+            
+            # Fix 2: Check role (case-insensitive)
+            if not user or user.role.lower() not in required_roles:
+                # Fix 3: Remove ', 403' so the browser follows the redirect properly
+                flash('You do not have permission to access this page.', 'error')
+                return redirect(url_for('login'))
+                
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -438,6 +366,49 @@ def logout():
     """User logout"""
     session.clear()
     return redirect(url_for('login'))
+
+# --- Dashboard Routes ---
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    user = User.query.get(session.get('user_id'))
+    today = datetime.now().date()
+    
+    # Total Employees
+    total_employees = User.query.filter_by(role='EMPLOYEE', is_active=True).count()
+    
+    # Attendance Rate (percentage of present today)
+    total_present_today = Attendance.query.filter_by(attendance_date=today, status='Present').count()
+    total_employees_active = User.query.filter_by(is_active=True).count()
+    attendance_rate = round((total_present_today / total_employees_active * 100) if total_employees_active > 0 else 0)
+    
+    # Pending Leaves
+    pending_leaves = Leave.query.filter_by(status='Pending').count()
+    
+    # Total Payroll (sum of all net salaries for current month)
+    current_month = today.replace(day=1)
+    total_payroll = db.session.query(db.func.sum(Payslip.net_salary)).filter_by(payroll_month=current_month).scalar() or 0
+    total_payroll = round(total_payroll / 100000, 1)  # Convert to Lakhs
+    
+    # Today's Attendance (for logged-in employee)
+    today_attendance = Attendance.query.filter_by(user_id=user.id, attendance_date=today).first()
+    
+    # Leave Balance
+    leave_balance = LeaveBalance.query.filter_by(user_id=user.id, year=today.year).all()
+    
+    # Recent Payslips
+    recent_payslips = Payslip.query.filter_by(user_id=user.id).order_by(Payslip.payroll_month.desc()).limit(3).all()
+    
+    return render_template('dashboard.html', 
+                         user=user,
+                         total_employees=total_employees,
+                         attendance_rate=attendance_rate,
+                         pending_leaves=pending_leaves,
+                         total_payroll=total_payroll,
+                         today_attendance=today_attendance,
+                         leave_balance=leave_balance,
+                         recent_payslips=recent_payslips)
 
 
 
