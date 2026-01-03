@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - WorkZen{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+{% if user.role == 'admin' or user.role == 'hr_officer' %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value">{{ total_employees }}</div>
+                <div class="stat-label">Total Employees</div>
+            </div>
+            <div class="stat-icon" style="background: #dbeafe;">
+                <svg width="24" height="24" fill="none" stroke="#2563eb" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value">{{ attendance_rate }}%</div>
+                <div class="stat-label">Attendance Today</div>
+            </div>
+            <div class="stat-icon" style="background: #d1fae5;">
+                <svg width="24" height="24" fill="none" stroke="#059669" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value">{{ pending_leaves }}</div>
+                <div class="stat-label">Pending Leaves</div>
+            </div>
+            <div class="stat-icon" style="background: #fee2e2;">
+                <svg width="24" height="24" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Recent Leave Requests</h3>
+        <a href="{{ url_for('manage_leave') }}" class="btn btn-outline">View All</a>
+    </div>
+    <p style="color: #666;">No recent requests.</p>
+</div>
+
+{% else %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value">22</div>
+                <div class="stat-label">Days Worked (This Month)</div>
+            </div>
+            <div class="stat-icon" style="background: #dbeafe;">
+                <svg width="24" height="24" fill="none" stroke="#2563eb" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value">12</div>
+                <div class="stat-label">Leave Balance</div>
+            </div>
+            <div class="stat-icon" style="background: #d1fae5;">
+                <svg width="24" height="24" fill="none" stroke="#059669" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">My Recent Activity</h3>
+        <button class="btn btn-primary">Check In</button>
+    </div>
+    <p>You have not checked in today.</p>
+</div>
+{% endif %}
+
+{% endblock %}
