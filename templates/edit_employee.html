@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Employee - {{ user.full_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 style="margin: 0;">Edit Employee</h1>
+        <p style="color: var(--gray); margin-top: 5px;">Update details for {{ user.full_name }}</p>
+    </div>
+    <a href="{{ url_for('employee_profile', id=user.id) }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Profile
+    </a>
+</div>
+
+<div class="form-container">
+    <form method="POST" action="{{ url_for('edit_employee', id=user.id) }}">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3 class="card-title">Personal Information</h3>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input type="text" name="first_name" value="{{ user.first_name }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" name="last_name" value="{{ user.last_name }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" value="{{ user.email }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="tel" name="phone" value="{{ user.phone or '' }}">
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3 class="card-title">Job Details</h3>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Department</label>
+                    <select name="department">
+                        <option value="IT" {% if user.department == 'IT' %}selected{% endif %}>IT</option>
+                        <option value="HR" {% if user.department == 'HR' %}selected{% endif %}>HR</option>
+                        <option value="Sales" {% if user.department == 'Sales' %}selected{% endif %}>Sales</option>
+                        <option value="Finance" {% if user.department == 'Finance' %}selected{% endif %}>Finance</option>
+                        <option value="Marketing" {% if user.department == 'Marketing' %}selected{% endif %}>Marketing</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Job Position</label>
+                    <input type="text" name="job_position" value="{{ user.job_position or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select name="role">
+                        <option value="EMPLOYEE" {% if user.role == 'EMPLOYEE' %}selected{% endif %}>Employee</option>
+                        <option value="HR_OFFICER" {% if user.role == 'HR_OFFICER' %}selected{% endif %}>HR Officer</option>
+                        <option value="PAYROLL_OFFICER" {% if user.role == 'PAYROLL_OFFICER' %}selected{% endif %}>Payroll Officer</option>
+                        <option value="ADMIN" {% if user.role == 'ADMIN' %}selected{% endif %}>Admin</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select name="is_active">
+                        <option value="True" {% if user.is_active %}selected{% endif %}>Active</option>
+                        <option value="False" {% if not user.is_active %}selected{% endif %}>Inactive</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions" style="text-align: right;">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save Changes
+            </button>
+        </div>
+    </form>
+</div>
+
+<style>
+    .form-container { max-width: 800px; margin: 0 auto; }
+    .card { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .card-header { border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px; }
+    .card-title { margin: 0; font-size: 18px; font-weight: 600; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+    .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+</style>
+{% endblock %}

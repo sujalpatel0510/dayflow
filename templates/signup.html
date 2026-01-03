@@ -64,6 +64,8 @@
             border-color: #667eea;
             box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
         }
+        
+        /* Role Selection Styles */
         .role-section {
             background-color: #f9f9f9;
             padding: 20px;
@@ -83,60 +85,45 @@
             border-radius: 5px;
             border-left: 4px solid #667eea;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            display: block;
         }
         .role-option:hover {
-            background: #f5f5f5;
+            transform: translateX(5px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        .role-option input[type="radio"] {
-            cursor: pointer;
+        .role-option input {
             margin-right: 10px;
         }
         .role-option strong {
-            color: #667eea;
+            color: #333;
+            font-size: 15px;
         }
         .role-option p {
-            color: #666;
+            margin-top: 5px;
             font-size: 12px;
-            margin: 5px 0 0 25px;
-            line-height: 1.4;
+            color: #666;
+            margin-left: 24px;
         }
-        .form-two-col {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-        .error {
-            color: #e74c3c;
-            font-size: 13px;
-            margin-bottom: 15px;
-            padding: 10px;
-            background: #fadad5;
-            border-radius: 5px;
-        }
+
         button {
             width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-color: #667eea;
             color: white;
+            padding: 14px;
             border: none;
             border-radius: 5px;
             font-size: 16px;
-            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: background-color 0.3s;
+            font-weight: 600;
         }
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
-        }
-        button:active {
-            transform: translateY(0);
+            background-color: #5a6fd6;
         }
         .login-link {
             text-align: center;
             margin-top: 20px;
-            color: #666;
             font-size: 14px;
         }
         .login-link a {
@@ -144,95 +131,82 @@
             text-decoration: none;
             font-weight: 600;
         }
-        .login-link a:hover {
-            text-decoration: underline;
-        }
-        .required {
-            color: red;
-        }
-        @media (max-width: 480px) {
-            .signup-container {
-                padding: 25px;
-            }
-            .form-two-col {
-                grid-template-columns: 1fr;
-            }
+        .error-msg {
+            background-color: #fee2e2;
+            color: #ef4444;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
     <div class="signup-container">
-        <h2>🎯 WorkZen Sign Up</h2>
-
+        <h2>Create Account</h2>
+        
         {% if error %}
-            <div class="error">{{ error }}</div>
+        <div class="error-msg">
+            {{ error }}
+        </div>
         {% endif %}
 
-        <form method="POST">
-            <!-- First Name & Last Name -->
-            <div class="form-two-col">
-                <div class="form-group">
-                    <label for="first_name">First Name <span class="required">*</span></label>
-                    <input type="text" id="first_name" name="first_name" placeholder="John" required>
-                </div>
-                <div class="form-group">
-                    <label for="last_name">Last Name <span class="required">*</span></label>
-                    <input type="text" id="last_name" name="last_name" placeholder="Doe" required>
+        <form action="{{ url_for('signup') }}" method="POST">
+            <div class="form-group">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>First Name</label>
+                        <input type="text" name="first_name" required placeholder="John">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Last Name</label>
+                        <input type="text" name="last_name" required placeholder="Doe">
+                    </div>
                 </div>
             </div>
 
-            <!-- Email & Phone -->
-            <div class="form-two-col">
-                <div class="form-group">
-                    <label for="email">Email <span class="required">*</span></label>
-                    <input type="email" id="email" name="email" placeholder="john@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="phone">Phone <span class="required">*</span></label>
-                    <input type="tel" id="phone" name="phone" placeholder="+91 XXXXX XXXXX" required>
-                </div>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" name="email" required placeholder="john@example.com">
             </div>
-            <!-- Password -->
-<div class="form-group">
-    <label for="password">Password <span class="required">*</span></label>
-    <input type="password" id="password" name="password" placeholder="Enter your password" required minlength="6">
-</div>
 
-            <!-- Role Selection -->
+            <div class="form-group">
+                <label>Phone Number</label>
+                <input type="tel" name="phone" placeholder="+1234567890">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required placeholder="••••••••">
+            </div>
+
             <div class="role-section">
-                <h4>🎭 Select Your Role <span class="required">*</span></h4>
+                <h4>Select Your Role <span style="color: red">*</span></h4>
 
                 <label class="role-option">
-                    <input type="radio" name="role" value="ADMIN" required> 
-                    <strong>👨‍💼 Admin</strong>
-                    <p>Full system access • Manage all users & settings • Complete control</p>
-                </label>
-
-                <label class="role-option">
-                    <input type="radio" name="role" value="EMPLOYEE" required> 
+                    <input type="radio" name="role" value="employee" checked required> 
                     <strong>👤 Employee</strong>
-                    <p>Mark attendance • Apply for leaves • View personal records</p>
+                    <p>Mark attendance, apply for leaves, and view payslips.</p>
                 </label>
 
                 <label class="role-option">
-                    <input type="radio" name="role" value="HR_OFFICER" required> 
+                    <input type="radio" name="role" value="hr_officer"> 
                     <strong>👩‍💼 HR Officer</strong>
-                    <p>Manage employee profiles • Monitor attendance • Allocate leaves</p>
+                    <p>Manage employees, attendance, and leave requests.</p>
                 </label>
 
                 <label class="role-option">
-                    <input type="radio" name="role" value="PAYROLL_OFFICER" required> 
-                    <strong>💰 Payroll Officer</strong>
-                    <p>Approve time-off • Generate payslips • Manage salaries</p>
+                    <input type="radio" name="role" value="admin"> 
+                    <strong>👨‍💼 Admin</strong>
+                    <p>Full control over the system and all settings.</p>
                 </label>
             </div>
 
-            <!-- Submit Button -->
             <button type="submit">Create Account</button>
 
-            <!-- Login Link -->
             <div class="login-link">
-                Already have an account? <a href="/login">Login here</a>
+                Already have an account? <a href="{{ url_for('login') }}">Login here</a>
             </div>
         </form>
     </div>

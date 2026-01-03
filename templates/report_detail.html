@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report_type|title }} Report - WorkZen{% endblock %}
+
+{% block nav_reports %}active{% endblock %}
+
+{% block page_title %}{{ report_type|title }} Report{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-header {
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .report-title-section h2 {
+        margin: 0 0 10px 0;
+        font-size: 28px;
+    }
+
+    .report-meta {
+        font-size: 14px;
+        opacity: 0.9;
+    }
+
+    .report-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-white {
+        background: white;
+        color: var(--primary-color);
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+    }
+
+    .btn-white:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .back-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary-color);
+        text-decoration: none;
+        margin-bottom: 20px;
+        font-weight: 500;
+    }
+
+    .back-button:hover {
+        text-decoration: underline;
+    }
+
+    .filters-section {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+
+    .filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 15px;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .filter-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--dark);
+        margin-bottom: 8px;
+    }
+
+    .filter-input {
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 14px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .stat-box {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+
+    .stat-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+    }
+
+    .stat-value {
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--primary-color);
+        margin-bottom: 5px;
+    }
+
+    .stat-label {
+        font-size: 14px;
+        color: var(--gray);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .chart-container {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+
+    .chart-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: var(--dark);
+    }
+
+    .chart-placeholder {
+        background: var(--light-gray);
+        height: 300px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--gray);
+    }
+
+    .data-table-container {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .table-header {
+        padding: 20px 25px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .table-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--dark);
+    }
+
+    .search-box {
+        padding: 8px 15px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        width: 250px;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+
+    .export-formats {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .format-btn {
+        padding: 8px 15px;
+        border: 1px solid var(--border);
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.3s;
+    }
+
+    .format-btn:hover {
+        background: var(--light-gray);
+    }
+
+    .badge-status {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .badge-danger {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('reports') }}" class="back-button">
+    <i class="fas fa-arrow-left"></i> Back to Reports
+</a>
+
+<div class="report-header">
+    <div class="report-title-section">
+        <h2>{{ report_type|title }} Report</h2>
+        <div class="report-meta">
+            <i class="fas fa-calendar"></i> Generated on {{ generated_date }}
+            {% if date_range %}
+            | Period: {{ date_range }}
+            {% endif %}
+        </div>
+    </div>
+    <div class="report-actions">
+        <button class="btn-white" onclick="window.print()">
+            <i class="fas fa-print"></i> Print
+        </button>
+        <button class="btn-white" onclick="downloadPDF()">
+            <i class="fas fa-file-pdf"></i> Download PDF
+        </button>
+        <button class="btn-white" onclick="downloadExcel()">
+            <i class="fas fa-file-excel"></i> Export Excel
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filters-section">
+    <h4 style="margin-bottom: 15px;">Filters</h4>
+    <form method="GET" action="{{ url_for('report_detail', report_type=report_type) }}">
+        <div class="filter-grid">
+            <div class="filter-group">
+                <label class="filter-label">Start Date</label>
+                <input type="date" name="start_date" class="filter-input" value="{{ start_date or '' }}">
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">End Date</label>
+                <input type="date" name="end_date" class="filter-input" value="{{ end_date or '' }}">
+            </div>
+            {% if report_type in ['attendance', 'employee', 'leave'] %}
+            <div class="filter-group">
+                <label class="filter-label">Department</label>
+                <select name="department" class="filter-input">
+                    <option value="">All Departments</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept }}" {% if department == dept %}selected{% endif %}>{{ dept }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="filter-group" style="padding-top: 23px;">
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Apply Filters</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Summary Statistics -->
+<div class="stats-grid">
+    {% for stat in summary_stats %}
+    <div class="stat-box">
+        <div class="stat-icon">{{ stat.icon }}</div>
+        <div class="stat-value">{{ stat.value }}</div>
+        <div class="stat-label">{{ stat.label }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Chart Visualization -->
+{% if show_chart %}
+<div class="chart-container">
+    <h3 class="chart-title">{{ chart_title or 'Trend Analysis' }}</h3>
+    <div class="chart-placeholder">
+        <div style="text-align: center;">
+            <i class="fas fa-chart-bar" style="font-size: 48px; color: var(--gray); margin-bottom: 15px;"></i>
+            <p>Chart visualization would be displayed here</p>
+            <small style="color: var(--gray);">Using Chart.js or similar library</small>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Data Table -->
+<div class="data-table-container">
+    <div class="table-header">
+        <h3 class="table-title">Detailed Data</h3>
+        <input type="text" class="search-box" placeholder="🔍 Search records..." onkeyup="filterTable(this.value)">
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table" id="reportTable">
+            <thead>
+                <tr>
+                    {% for header in table_headers %}
+                    <th>{{ header }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% if table_data and table_data|length > 0 %}
+                    {% for row in table_data %}
+                    <tr>
+                        {% for cell in row %}
+                        <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="{{ table_headers|length }}" style="text-align: center; padding: 40px; color: var(--gray);">
+                        No data available for the selected filters
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function filterTable(searchText) {
+        const table = document.getElementById('reportTable');
+        const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+        
+        searchText = searchText.toLowerCase();
+        
+        for (let row of rows) {
+            let found = false;
+            const cells = row.getElementsByTagName('td');
+            
+            for (let cell of cells) {
+                if (cell.textContent.toLowerCase().includes(searchText)) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            row.style.display = found ? '' : 'none';
+        }
+    }
+
+    async function downloadPDF() {
+        const reportType = '{{ report_type }}';
+        const params = new URLSearchParams(window.location.search);
+        
+        try {
+            const response = await fetch(`/api/reports/download/${reportType}/pdf?${params.toString()}`);
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${reportType}_report_${new Date().toISOString().split('T')[0]}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('Failed to download PDF');
+            }
+        } catch (error) {
+            console.error('Error downloading PDF:', error);
+            alert('An error occurred while downloading the PDF');
+        }
+    }
+
+    async function downloadExcel() {
+        const reportType = '{{ report_type }}';
+        const params = new URLSearchParams(window.location.search);
+        
+        try {
+            const response = await fetch(`/api/reports/download/${reportType}/excel?${params.toString()}`);
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${reportType}_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('Failed to download Excel file');
+            }
+        } catch (error) {
+            console.error('Error downloading Excel:', error);
+            alert('An error occurred while downloading the Excel file');
+        }
+    }
+</script>
+{% endblock %}

@@ -191,7 +191,6 @@
 
 </div>
 
-<!-- Statistics Overview -->
 <div class="stats-overview">
     <div class="stat-card">
         <div class="stat-label">Total Employees</div>
@@ -211,7 +210,6 @@
     </div>
 </div>
 
-<!-- Search and Filter -->
 <div class="search-filter-section">
     <div class="search-box">
         <input type="text" id="searchInput" placeholder="🔍 Search employees by name, email, or department..." onkeyup="filterEmployees()">
@@ -235,7 +233,6 @@
     </div>
 </div>
 
-<!-- Employees Grid -->
 <div class="employees-grid" id="employeesGrid">
     {% if users %}
         {% for user in users %}
@@ -244,12 +241,13 @@
              data-email="{{ user.email|lower }}" 
              data-department="{{ user.department|lower if user.department else '' }}"
              data-role="{{ user.role }}"
-             onclick="window.location.href='{{ url_for('employee_profile', user_id=user.id) }}'">
+             onclick="window.location.href='{{ url_for('employee_profile', id=user.id) }}'">
             
             <div class="status-badge {% if not user.is_active %}inactive{% endif %}"></div>
             
             <div class="employee-avatar">
-                {{ user.full_name.split()[0][0]|upper }}{{ user.full_name.split()[1][0]|upper if user.full_name.split()|length > 1 else '' }}
+                {% set names = user.full_name.split() %}
+                {{ names[0][0]|upper }}{{ names[1][0]|upper if names|length > 1 else '' }}
             </div>
             
             <div class="employee-name">{{ user.full_name }}</div>
@@ -259,7 +257,7 @@
             <span class="employee-department">{{ user.department }}</span>
             {% endif %}
             
-            <div class="employee-id">{{ user.login_id }}</div>
+            <div class="employee-id">ID: #{{ user.id }}</div>
             
             <div class="employee-contact">
                 <i class="fas fa-envelope" style="font-size: 11px;"></i>

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Leave Management - WorkZen{% endblock %}
+
+{% block nav_leave %}active{% endblock %}
+
+{% block nav_leave_emp %}active{% endblock %}
+
+{% block page_title %}Leave Management{% endblock %}
+
+{% block content %}
+
+<div class="leaves-container">
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title">Apply for Leave</h3>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('apply_leave') }}" method="POST">
+                <div class="form-row" style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Leave Type</label>
+                        <select name="leave_type" class="form-control" required>
+                            <option value="Sick Leave">Sick Leave</option>
+                            <option value="Casual Leave">Casual Leave</option>
+                            <option value="Earned Leave">Earned Leave</option>
+                            <option value="Unpaid Leave">Unpaid Leave</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Start Date</label>
+                        <input type="date" name="start_date" class="form-control" required>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">End Date</label>
+                        <input type="date" name="end_date" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Reason</label>
+                    <textarea name="reason" class="form-control" rows="2" required placeholder="Brief reason..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Submit Request</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Leave History</h3>
+        </div>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Type</th>
+                        <th>Dates</th>
+                        <th>Days</th>
+                        <th>Status</th>
+                        {% if user.role in ['admin', 'hr_officer'] %}
+                        <th>Actions</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for leave in leaves %}
+                    <tr>
+                        <td>
+                            <strong>{{ leave.requester.full_name }}</strong><br>
+                            <small style="color: #666;">{{ leave.requester.department }}</small>
+                        </td>
+                        <td>{{ leave.leave_type }}</td>
+                        <td>
+                            {{ leave.start_date.strftime('%d %b') }} - 
+                            {{ leave.end_date.strftime('%d %b %Y') }}
+                        </td>
+                        <td>{{ leave.number_of_days }}</td>
+                        <td>
+                            {% if leave.status == 'Approved' %}
+                                <span class="badge badge-success">Approved</span>
+                            {% elif leave.status == 'Rejected' %}
+                                <span class="badge badge-danger">Rejected</span>
+                            {% else %}
+                                <span class="badge badge-warning">Pending</span>
+                            {% endif %}
+                        </td>
+
+                        {% if user.role in ['admin', 'hr_officer'] %}
+                        <td>
+                            {% if leave.status == 'Pending' %}
+                            <a href="{{ url_for('approve_leave', leave_id=leave.id, action='approve') }}" 
+                               class="btn btn-success" style="padding: 4px 10px; font-size: 12px;">Approve</a>
+                            <a href="{{ url_for('approve_leave', leave_id=leave.id, action='reject') }}" 
+                               class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;">Reject</a>
+                            {% else %}
+                            <span style="color: #999;">-</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 20px;">No leave records found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

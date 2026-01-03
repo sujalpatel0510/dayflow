@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Employee Profile - WorkZen{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <div class="page-header">
+        <div class="header-left">
+            <a href="{{ url_for('employee_list') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Employees
+            </a>
+            <h1>Employee Profile</h1>
+        </div>
+        
+        {% if current_user.role in ['ADMIN', 'HR_OFFICER'] %}
+        <div class="header-actions">
+            <a href="{{ url_for('edit_employee', id=user.id) }}" class="btn btn-secondary">
+                <i class="fas fa-edit"></i> Edit Details
+            </a>
+            
+            {% if user.is_active %} <button class="btn btn-danger" onclick="alert('Deactivate feature coming soon')">
+                <i class="fas fa-user-slash"></i> Deactivate
+            </button>
+            {% else %}
+            <button class="btn btn-success" onclick="alert('Activate feature coming soon')">
+                <i class="fas fa-user-check"></i> Activate
+            </button>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="profile-grid">
+        <div class="card profile-card">
+            <div class="profile-header">
+                <div class="avatar-large">
+                    {{ user.first_name[0] }}{{ user.last_name[0] }}
+                </div>
+                <div class="profile-title">
+                    <h2>{{ user.first_name }} {{ user.last_name }}</h2>
+                    <span class="badge badge-role">{{ user.job_title }}</span>
+                </div>
+            </div>
+            
+            <div class="info-list">
+                <div class="info-item">
+                    <label>Employee ID</label>
+                    <span>#{{ user.id }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Department</label>
+                    <span>{{ user.department }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Email</label>
+                    <a href="mailto:{{ user.email }}">{{ user.email }}</a>
+                </div>
+                <div class="info-item">
+                    <label>Phone</label>
+                    <span>{{ user.phone or 'N/A' }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Status</label>
+                    <span class="status-badge {{ 'active' if user.is_active else 'inactive' }}">
+                        {{ 'Active' if user.is_active else 'Inactive' }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card details-card">
+            <h3>Employment Details</h3>
+            <div class="details-grid">
+                <div class="detail-group">
+                    <label>Job Position</label>
+                    <p>{{ user.job_position }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Employment Type</label>
+                    <p>{{ user.employment_type }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Date of Joining</label>
+                    <p>{{ user.date_of_joining.strftime('%d %b, %Y') if user.date_of_joining else '-' }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Work Location</label>
+                    <p>{{ user.work_location }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Shift Time</label>
+                    <p>{{ user.shift_time or 'General' }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Contract Type</label>
+                    <p>{{ user.contract_type }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card details-card">
+            <h3>Personal Information</h3>
+            <div class="details-grid">
+                <div class="detail-group">
+                    <label>Date of Birth</label>
+                    <p>{{ user.date_of_birth.strftime('%d %b, %Y') if user.date_of_birth else '-' }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Gender</label>
+                    <p>{{ user.gender }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Nationality</label>
+                    <p>{{ user.nationality }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Address</label>
+                    <p>{{ user.work_address or '-' }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card details-card">
+            <h3>Emergency Contact</h3>
+            <div class="details-grid">
+                <div class="detail-group">
+                    <label>Contact Name</label>
+                    <p>{{ user.emergency_contact_name or '-' }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Relationship</label>
+                    <p>{{ user.emergency_contact_relation or '-' }}</p>
+                </div>
+                <div class="detail-group">
+                    <label>Phone Number</label>
+                    <p>{{ user.emergency_contact_phone or '-' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ... (Keep your existing styles here) ... */
+    .profile-container {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+
+    .header-left h1 {
+        margin: 10px 0 0 0;
+        font-size: 24px;
+        color: var(--dark);
+    }
+
+    .back-link {
+        color: var(--text-light);
+        text-decoration: none;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .back-link:hover {
+        color: var(--primary-color);
+    }
+
+    .profile-grid {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+        gap: 25px;
+    }
+
+    .card {
+        background: white;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+
+    .profile-card {
+        grid-row: span 3; /* Stick to the left side */
+    }
+
+    .profile-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding-bottom: 25px;
+        border-bottom: 1px solid var(--light-gray);
+    }
+
+    .avatar-large {
+        width: 100px;
+        height: 100px;
+        background: var(--primary-light);
+        color: var(--primary-color);
+        font-size: 36px;
+        font-weight: 600;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 15px auto;
+    }
+
+    .profile-title h2 {
+        font-size: 20px;
+        margin: 0 0 5px 0;
+    }
+
+    .info-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+    }
+
+    .info-item label {
+        color: var(--text-light);
+    }
+
+    .info-item span, .info-item a {
+        color: var(--dark);
+        font-weight: 500;
+    }
+
+    .details-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 20px;
+    }
+
+    .detail-group label {
+        display: block;
+        color: var(--text-light);
+        font-size: 12px;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .detail-group p {
+        margin: 0;
+        font-weight: 500;
+        color: var(--dark);
+    }
+
+    @media (max-width: 900px) {
+        .profile-grid {
+            grid-template-columns: 1fr;
+        }
+        .profile-card {
+            grid-row: auto;
+        }
+    }
+</style>
+{% endblock %}

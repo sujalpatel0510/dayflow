@@ -131,6 +131,8 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+    
+    
 
 class Attendance(db.Model):
     """Attendance tracking model"""
@@ -410,7 +412,1645 @@ def dashboard():
                          leave_balance=leave_balance,
                          recent_payslips=recent_payslips)
 
+# --- LEAVE MANAGEMENT ROUTES ---
 
+@app.route('/leaves')
+def manage_leave():
+    # 1. Check Login
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    user = User.query.get(session['user_id'])
+    
+    # 2. Logic: Admin/HR see ALL leaves. Employees see ONLY their own.
+    if user.role in ['admin', 'hr_officer']:
+        leaves = Leave.query.order_by(Leave.created_at.desc()).all()
+    else:
+        leaves = Leave.query.filter_by(user_id=user.id).order_by(Leave.created_at.desc()).all()
+
+    return render_template('leaves.html', leaves=leaves, user=user)
+
+
+@app.route('/apply_leave', methods=['POST'])  # <--- CRITICAL: Must have methods=['POST']
+def apply_leave():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    user_id = session['user_id']
+    
+    # Get form data
+    leave_type = request.form.get('leave_type')
+    start_date_str = request.form.get('start_date')
+    end_date_str = request.form.get('end_date')
+    reason = request.form.get('reason')
+    
+    try:
+        # Convert strings to Python Dates
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        
+        # Calculate days
+        delta = end_date - start_date
+        number_of_days = delta.days + 1
+        
+        if number_of_days < 1:
+            flash('End date must be after start date', 'error')
+            return redirect(url_for('manage_leave'))
+            
+    except ValueError:
+        flash('Invalid date format', 'error')
+        return redirect(url_for('manage_leave'))
+
+    # Create Leave Request
+    new_leave = Leave(
+        user_id=user_id,
+        leave_type=leave_type,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        number_of_days=number_of_days,
+        status='Pending'
+    )
+    
+    db.session.add(new_leave)
+    db.session.commit()
+    
+    flash('Leave request submitted successfully!', 'success')
+    return redirect(url_for('manage_leave'))
+
+
+@app.route('/approve_leave/<int:leave_id>/<action>')
+def approve_leave(leave_id, action):
+    # 1. Check Login
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    current_user = User.query.get(session['user_id'])
+    
+    # 2. SECURITY CHECK: Only Admin and HR can approve/reject
+    if current_user.role not in ['admin', 'hr_officer']:
+        flash('Unauthorized action. Only Admin or HR can approve leaves.', 'error')
+        return redirect(url_for('manage_leave'))
+
+    leave = Leave.query.get_or_404(leave_id)
+    
+    # 3. Process Action
+    if action == 'approve':
+        leave.status = 'Approved'
+        leave.approved_by = current_user.id
+        flash(f'Leave Approved for {leave.requester.full_name}', 'success')
+        
+    elif action == 'reject':
+        leave.status = 'Rejected'
+        leave.approved_by = current_user.id
+        flash(f'Leave Rejected for {leave.requester.full_name}', 'error')
+        
+    db.session.commit()
+    return redirect(url_for('manage_leave'))
+
+
+@app.route('/attendance')
+def attendance():  # <--- CHANGED from 'attendance_page' to 'attendance'
+    # 1. Security Check
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    user = User.query.get(session['user_id'])
+    
+    # 2. Logic: Admin sees ALL, Employee sees OWN
+    if user.role in ['admin', 'hr_officer']:
+        attendance_records = Attendance.query.order_by(Attendance.attendance_date.desc()).limit(50).all()
+    else:
+        attendance_records = Attendance.query.filter_by(user_id=user.id).order_by(Attendance.attendance_date.desc()).all()
+
+    return render_template('attendance.html', user=user, attendance_records=attendance_records)
+
+
+@app.route('/mark_attendance')
+def mark_attendance():
+    # 1. Security Check
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    user_id = session['user_id']
+    today = datetime.utcnow().date()
+    now = datetime.utcnow()
+    
+    # 2. Check if record exists for TODAY
+    attendance = Attendance.query.filter_by(user_id=user_id, attendance_date=today).first()
+    
+    if not attendance:
+        # --- ACTION: CHECK IN ---
+        # If checking in after 9:30 AM, mark as Late
+        status = 'Present'
+        if now.hour > 9 or (now.hour == 9 and now.minute > 30):
+            status = 'Late'
+            
+        new_record = Attendance(
+            user_id=user_id,
+            attendance_date=today,
+            check_in=now,
+            status=status,
+            remarks='Web Check-in'
+        )
+        db.session.add(new_record)
+        flash(f'Checked In successfully at {now.strftime("%H:%M")}!', 'success')
+        
+    elif attendance.check_out is None:
+        # --- ACTION: CHECK OUT ---
+        attendance.check_out = now
+        
+        # Calculate Working Hours
+        duration = attendance.check_out - attendance.check_in
+        attendance.working_hours = round(duration.total_seconds() / 3600, 2)
+        
+        flash(f'Checked Out successfully at {now.strftime("%H:%M")}!', 'success')
+        
+    else:
+        # --- ALREADY DONE ---
+        flash('You have already completed attendance for today.', 'info')
+        
+    db.session.commit()
+    return redirect(url_for('attendance'))
+
+
+@app.route('/employees')
+def employee_list():
+    # 1. Check if user is logged in (replaces @login_required)
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    # 2. Get Current User (Required for the sidebar to work)
+    current_user = User.query.get(session['user_id'])
+
+    # 3. Get All Employees
+    users = User.query.all()
+
+    # 4. Render Template
+    # NOTE: You need to create 'employees.html' next. 
+    # If you don't have it, change this to 'dashboard.html' temporarily.
+    return render_template('employees.html', users=users, user=current_user)
+
+
+@app.route('/admin/initialize-all-leave-balances', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def initialize_all_leave_balances():
+    """Initialize leave balances for all active employees"""
+    try:
+        current_year = datetime.now().year
+        
+        # Get all active employees
+        employees = User.query.filter_by(role='EMPLOYEE', is_active=True).all()
+        
+        # Define leave types
+        leave_types = [
+            {'type': 'Annual', 'days': 20},
+            {'type': 'Sick', 'days': 10},
+            {'type': 'Casual', 'days': 5},
+            {'type': 'Maternity', 'days': 90},
+            {'type': 'Unpaid', 'days': 10}
+        ]
+        
+        created_count = 0
+        
+        for employee in employees:
+            for leave_type in leave_types:
+                # Check if balance already exists
+                existing = LeaveBalance.query.filter_by(
+                    user_id=employee.id,
+                    leave_type=leave_type['type'],
+                    year=current_year
+                ).first()
+                
+                if not existing:
+                    balance = LeaveBalance(
+                        user_id=employee.id,
+                        leave_type=leave_type['type'],
+                        total_days=leave_type['days'],
+                        used_days=0,
+                        remaining_days=leave_type['days'],
+                        year=current_year
+                    )
+                    db.session.add(balance)
+                    created_count += 1
+        
+        db.session.commit()
+        
+        return jsonify(
+            message=f'Successfully initialized leave balances for {len(employees)} employees',
+            created_records=created_count,
+            status='success'
+        ), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error=str(e), status='error'), 500
+
+        
+@app.route('/timeoff')
+@login_required
+def timeoff():
+    """Time off / Leave management page"""
+    user_id = session.get('user_id')
+    user = User.query.get(user_id)
+    current_year = datetime.now().year
+    today = datetime.now().date()
+
+    # Get user's own leaves
+    leaves = Leave.query.filter_by(user_id=user_id).order_by(Leave.created_at.desc()).all()
+    
+    # Get user's leave balance
+    leave_balance = LeaveBalance.query.filter_by(user_id=user_id, year=current_year).all()
+
+    # Get ALL leave requests (for "All Leave Requests" tab - everyone can see)
+    all_leaves = Leave.query.order_by(Leave.created_at.desc()).all()
+    
+    # For HR Officers and Admins - get pending approvals
+    pending_leaves = []
+    pending_count = 0
+    approved_today = 0
+    rejected_today = 0
+    
+    if user.role in ['HR_OFFICER', 'ADMIN']:
+        # Get pending leave requests
+        pending_leaves = Leave.query.filter_by(status='Pending').order_by(Leave.created_at.desc()).all()
+        pending_count = len(pending_leaves)
+        
+        # Get today's approved requests
+        approved_today = Leave.query.filter(
+            Leave.status == 'Approved',
+            Leave.updated_at >= today
+        ).count()
+        
+        # Get today's rejected requests
+        rejected_today = Leave.query.filter(
+            Leave.status == 'Rejected',
+            Leave.updated_at >= today
+        ).count()
+
+    return render_template('timeoff.html',
+                         user=user,
+                         leaves=leaves,
+                         leave_balance=leave_balance,
+                         current_year=current_year,
+                         all_leaves=all_leaves,
+                         pending_leaves=pending_leaves,
+                         pending_count=pending_count,
+                         approved_today=approved_today,
+                         rejected_today=rejected_today)
+
+
+
+# Add these routes to your app.py file
+
+
+@app.route('/employees/add')
+@login_required
+@role_required('admin', 'hr_officer') # Changed to lowercase
+def add_employee():
+    """Add new employee page (Admin or HR Officer only)"""
+    return render_template('add_employee.html')
+
+@app.route('/api/employees/add', methods=['POST'])
+@login_required
+@role_required('ADMIN', 'HR_OFFICER')
+def create_employee():
+    """Create new employee (Admin or HR Officer only)"""
+    try:
+        data = request.get_json()
+        
+        # Check if email already exists
+        if User.query.filter_by(email=data.get('email')).first():
+            return jsonify({'error': 'Email already exists'}), 400
+        
+        # Validate Names
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        
+        if not first_name or not last_name:
+            return jsonify({'error': 'First name and last name are required'}), 400
+        
+        temp_password = generate_temp_password()
+        
+        # Parse date fields
+        date_of_birth = None
+        if data.get('date_of_birth'):
+            date_of_birth = datetime.strptime(data.get('date_of_birth'), '%Y-%m-%d').date()
+        
+        date_of_joining = datetime.now().date()
+        if data.get('date_of_joining'):
+            date_of_joining = datetime.strptime(data.get('date_of_joining'), '%Y-%m-%d').date()
+        
+        # Create new user with CORRECT fields
+        user = User(
+            first_name=first_name,  # Matches User model
+            last_name=last_name,    # Matches User model
+            email=data.get('email'),
+            phone=data.get('phone'),
+            role=data.get('role', 'EMPLOYEE'),
+            department=data.get('department'),
+            job_position=data.get('job_position'),
+            job_title=data.get('job_title'),
+            employment_type=data.get('employment_type'),
+            contract_type=data.get('contract_type'),
+            date_of_joining=date_of_joining,
+            date_of_birth=date_of_birth,
+            gender=data.get('gender'),
+            nationality=data.get('nationality'),
+            work_location=data.get('work_location'),
+            work_address=data.get('work_address'),
+            time_zone=data.get('time_zone'),
+            shift_time=data.get('shift_time'),
+            working_hours=data.get('working_hours'),
+            wage_type=data.get('wage_type'),
+            wage=float(data.get('wage')) if data.get('wage') else None,
+            basic_salary=float(data.get('basic_salary')) if data.get('basic_salary') else None,
+            emergency_contact_name=data.get('emergency_contact_name'),
+            emergency_contact_relation=data.get('emergency_contact_relation'),
+            emergency_contact_phone=data.get('emergency_contact_phone'),
+            is_active=True
+            # Removed login_id and full_name as they don't exist in the model
+        )
+        
+        user.set_password(temp_password)
+        db.session.add(user)
+        db.session.commit()
+        
+        # Create default leave balances
+        current_year = datetime.now().year
+        leave_types = [
+            {'type': 'Annual', 'days': 20},
+            {'type': 'Sick', 'days': 10},
+            {'type': 'Casual', 'days': 5}
+        ]
+        
+        for leave in leave_types:
+            balance = LeaveBalance(
+                user_id=user.id,
+                leave_type=leave['type'],
+                total_days=leave['days'],
+                used_days=0,
+                remaining_days=leave['days'],
+                year=current_year
+            )
+            db.session.add(balance)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Employee added successfully',
+            'employee_id': user.id,
+            'temp_password': temp_password
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        # It is good practice to log the error here
+        print(f"Error adding employee: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
+@app.route('/employee/<int:id>')
+@login_required
+def employee_profile(id):
+    """View Employee Profile"""
+    employee = User.query.get_or_404(id)
+    
+    # Security check: Allow only Admin, HR, or the user themselves
+    if session.get('role') not in ['ADMIN', 'HR_OFFICER'] and session.get('user_id') != employee.id:
+        flash('You do not have permission to view this profile.', 'error')
+        return redirect(url_for('dashboard'))
+
+    # Fetch related data (Pass empty lists if models don't exist yet)
+    # You can implement actual queries here later for SalaryAdjustment, Badge, etc.
+    salary_adjustments = [] 
+    badges = []
+    certifications = []
+    
+    return render_template('employee_profile.html', 
+                         user=employee, 
+                         salary_adjustments=salary_adjustments,
+                         badges=badges,
+                         certifications=certifications)
+
+
+@app.route('/employee/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_employee(id):
+    # Only Admin or HR can edit employees
+    if session.get('role') not in ['ADMIN', 'HR_OFFICER']:
+        flash('Permission denied.', 'error')
+        return redirect(url_for('dashboard'))
+
+    employee = User.query.get_or_404(id)
+
+    if request.method == 'POST':
+        try:
+            employee.first_name = request.form['first_name']
+            employee.last_name = request.form['last_name']
+            employee.email = request.form['email']
+            employee.phone = request.form['phone']
+            employee.department = request.form['department']
+            employee.job_position = request.form['job_position']
+            employee.role = request.form['role']
+            
+            # Convert string 'True'/'False' to boolean
+            employee.is_active = request.form['is_active'] == 'True'
+
+            db.session.commit()
+            flash('Employee updated successfully!', 'success')
+            return redirect(url_for('employee_profile', id=employee.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating employee: {str(e)}', 'error')
+
+    return render_template('edit_employee.html', user=employee)
+
+
+# --- Attendance Routes ---
+@app.route('/api/attendance/checkin', methods=['POST'])
+@login_required
+def checkin():
+    """Mark check-in (Employee)"""
+    user_id = session.get('user_id')
+    today = datetime.now().date()
+    existing = Attendance.query.filter_by(user_id=user_id, attendance_date=today).first()
+    if existing:
+        return jsonify({'error': 'Already checked in today'}), 400
+
+    attendance = Attendance(
+        user_id=user_id,
+        attendance_date=today,
+        check_in=datetime.now().time(),
+        status='Present'
+    )
+    db.session.add(attendance)
+    db.session.commit()
+    return jsonify({'message': 'Checked in successfully'}), 200
+
+@app.route('/api/attendance/checkout', methods=['POST'])
+@login_required
+def checkout():
+    """Mark check-out (Employee)"""
+    user_id = session.get('user_id')
+    today = datetime.now().date()
+    attendance = Attendance.query.filter_by(user_id=user_id, attendance_date=today).first()
+    if not attendance:
+        return jsonify({'error': 'No check-in record found'}), 404
+
+    attendance.check_out = datetime.now().time()
+    if attendance.check_in and attendance.check_out:
+        check_in_dt = datetime.combine(today, attendance.check_in)
+        check_out_dt = datetime.combine(today, attendance.check_out)
+        attendance.working_hours = (check_out_dt - check_in_dt).total_seconds() / 3600
+    db.session.commit()
+    return jsonify({'message': 'Checked out successfully'}), 200
+
+# --- Leave Routes ---
+
+
+
+
+
+@app.route('/api/leaves/approve/<int:leave_id>', methods=['PUT'])
+@login_required
+@role_required('ADMIN', 'HR_OFFICER')  # Added HR_OFFICER here
+def approve_leave_api(leave_id):
+    """Approve leave request (Admin or HR Officer)"""
+    leave = Leave.query.get(leave_id)
+    if not leave:
+        return jsonify({'error': 'Leave request not found'}), 404
+
+    leave.status = 'Approved'
+    leave.approved_by = session.get('user_id')
+
+    balance = LeaveBalance.query.filter_by(
+        user_id=leave.user_id,
+        leave_type=leave.leave_type,
+        year=datetime.now().year
+    ).first()
+    
+    if balance:
+        balance.used_days += leave.number_of_days
+        balance.remaining_days = balance.total_days - balance.used_days
+
+    db.session.commit()
+    return jsonify({'message': 'Leave approved successfully'}), 200
+
+
+@app.route('/api/leaves/reject/<int:leave_id>', methods=['PUT'])
+@login_required
+@role_required('ADMIN', 'HR_OFFICER')  # Added HR_OFFICER here
+def reject_leave(leave_id):
+    """Reject leave request (Admin or HR Officer)"""
+    leave = Leave.query.get(leave_id)
+    if not leave:
+        return jsonify({'error': 'Leave request not found'}), 404
+
+    leave.status = 'Rejected'
+    leave.approved_by = session.get('user_id')
+    db.session.commit()
+    return jsonify({'message': 'Leave rejected successfully'}), 200
+
+
+# --- Payroll Routes ---
+
+# ======================== COMPLETE PAYROLL ROUTES ========================
+# Add these routes to your app.py file
+
+@app.route('/payroll')
+@login_required
+def payroll():
+    """Main payroll page - shows own payslips for employees, overview for admin/payroll officer"""
+    user_id = session.get('user_id')
+    user = User.query.get(user_id)
+    
+    # Get payslips for current user
+    payslips = Payslip.query.filter_by(user_id=user_id).order_by(
+        Payslip.payroll_month.desc()
+    ).limit(12).all()
+    
+    # Get current month payslip
+    current_month = datetime.now().replace(day=1).date()
+    current_payslip = Payslip.query.filter_by(
+        user_id=user_id,
+        payroll_month=current_month
+    ).first()
+    
+    # Get salary adjustments
+    salary_adjustments = SalaryAdjustment.query.filter_by(
+        user_id=user_id
+    ).order_by(SalaryAdjustment.adjustment_date.desc()).limit(5).all()
+    
+    # For Admin/Payroll Officer - get statistics
+    total_employees = None
+    total_payroll_current = None
+    processed_payslips = None
+    pending_payslips = None
+    
+    if user.role in ['ADMIN', 'PAYROLL_OFFICER']:
+        total_employees = User.query.filter_by(is_active=True).count()
+        
+        # Get current month payroll total
+        current_month_payslips = Payslip.query.filter_by(
+            payroll_month=current_month
+        ).all()
+        total_payroll_current = sum(p.net_salary or 0 for p in current_month_payslips)
+        
+        processed_payslips = Payslip.query.filter_by(
+            payroll_month=current_month,
+            status='Processed'
+        ).count()
+        
+        pending_payslips = Payslip.query.filter_by(
+            payroll_month=current_month,
+            status='Draft'
+        ).count()
+    
+    return render_template('payroll.html',
+                         user=user,
+                         payslips=payslips,
+                         current_payslip=current_payslip,
+                         salary_adjustments=salary_adjustments,
+                         total_employees=total_employees,
+                         total_payroll_current=total_payroll_current,
+                         processed_payslips=processed_payslips,
+                         pending_payslips=pending_payslips)
+
+@app.route('/payroll/generate')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def generate_payroll_page():
+    """Generate payroll page"""
+    user = User.query.get(session.get('user_id'))
+    
+    # Get all active employees
+    employees = User.query.filter_by(is_active=True).all()
+    
+    # Get unique departments
+    departments = db.session.query(User.department).distinct().filter(
+        User.department.isnot(None)
+    ).all()
+    departments = [d[0] for d in departments]
+    
+    # Calculate estimates
+    total_basic_salary = sum(emp.basic_salary or 0 for emp in employees)
+    estimated_gross = total_basic_salary * 1.25  # Basic + HRA + DA
+    estimated_deductions = total_basic_salary * 0.22  # PF + Tax + Prof Tax
+    estimated_net = estimated_gross - estimated_deductions
+    
+    return render_template('generate_payroll.html',
+                         user=user,
+                         employees=employees,
+                         departments=departments,
+                         total_basic_salary=total_basic_salary,
+                         estimated_gross=estimated_gross,
+                         estimated_deductions=estimated_deductions,
+                         estimated_net=estimated_net)
+
+@app.route('/api/payroll/generate', methods=['POST'])
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def generate_payroll():
+    """Generate payslips for employees"""
+    try:
+        data = request.get_json()
+        payroll_month_str = data.get('payroll_month')
+        department = data.get('department')
+        include_inactive = data.get('include_inactive', False)
+        
+        # Parse payroll month
+        payroll_month = datetime.strptime(payroll_month_str, '%Y-%m-%d').date()
+        
+        # Query employees
+        query = User.query
+        if not include_inactive:
+            query = query.filter_by(is_active=True)
+        if department:
+            query = query.filter_by(department=department)
+        
+        employees = query.all()
+        
+        generated_count = 0
+        skipped_count = 0
+        
+        for employee in employees:
+            # Check if payslip already exists
+            existing = Payslip.query.filter_by(
+                user_id=employee.id,
+                payroll_month=payroll_month
+            ).first()
+            
+            if existing:
+                skipped_count += 1
+                continue
+            
+            # Calculate attendance for the month
+            month_start = payroll_month.replace(day=1)
+            if payroll_month.month == 12:
+                next_month = payroll_month.replace(year=payroll_month.year + 1, month=1, day=1)
+            else:
+                next_month = payroll_month.replace(month=payroll_month.month + 1, day=1)
+            
+            attendance_count = Attendance.query.filter(
+                Attendance.user_id == employee.id,
+                Attendance.attendance_date >= month_start,
+                Attendance.attendance_date < next_month,
+                Attendance.status == 'Present'
+            ).count()
+            
+            # Calculate salary
+            basic = employee.basic_salary or 0
+            hra = basic * 0.20  # 20% HRA
+            da = basic * 0.05   # 5% DA
+            gross = basic + hra + da
+            
+            # Deductions
+            pf = basic * 0.12           # 12% PF
+            income_tax = basic * 0.05   # 5% Income Tax
+            prof_tax = 200              # Fixed Professional Tax
+            
+            net = gross - pf - income_tax - prof_tax
+            
+            # Create payslip
+            payslip = Payslip(
+                user_id=employee.id,
+                payroll_month=payroll_month,
+                basic_salary=basic,
+                hra=hra,
+                da=da,
+                gross_earnings=gross,
+                pf=pf,
+                income_tax=income_tax,
+                professional_tax=prof_tax,
+                net_salary=net,
+                status='Processed',
+                processed_date=datetime.now()
+            )
+            
+            db.session.add(payslip)
+            generated_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Payroll generated successfully! {generated_count} payslips created, {skipped_count} skipped (already exists)',
+            'generated': generated_count,
+            'skipped': skipped_count
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/payroll/payslip/<int:payslip_id>')
+@login_required
+def view_payslip(payslip_id):
+    """View detailed payslip"""
+    payslip = Payslip.query.get_or_404(payslip_id)
+    employee = User.query.get(payslip.user_id)
+    
+    # Check access - users can only view their own payslips unless they're admin/payroll officer
+    user = User.query.get(session.get('user_id'))
+    if user.role not in ['ADMIN', 'PAYROLL_OFFICER'] and payslip.user_id != user.id:
+        return "Unauthorized", 403
+    
+    # Calculate attendance statistics for the month
+    month_start = payslip.payroll_month.replace(day=1)
+    if payslip.payroll_month.month == 12:
+        next_month = payslip.payroll_month.replace(year=payslip.payroll_month.year + 1, month=1, day=1)
+    else:
+        next_month = payslip.payroll_month.replace(month=payslip.payroll_month.month + 1, day=1)
+    
+    # Count working days (excluding Sundays)
+    working_days = 0
+    current = month_start
+    while current < next_month:
+        if current.weekday() != 6:  # Not Sunday
+            working_days += 1
+        current += timedelta(days=1)
+    
+    present_days = Attendance.query.filter(
+        Attendance.user_id == employee.id,
+        Attendance.attendance_date >= month_start,
+        Attendance.attendance_date < next_month,
+        Attendance.status == 'Present'
+    ).count()
+    
+    absent_days = Attendance.query.filter(
+        Attendance.user_id == employee.id,
+        Attendance.attendance_date >= month_start,
+        Attendance.attendance_date < next_month,
+        Attendance.status == 'Absent'
+    ).count()
+    
+    # Get approved leaves for the month
+    leave_days = db.session.query(db.func.sum(Leave.number_of_days)).filter(
+        Leave.user_id == employee.id,
+        Leave.status == 'Approved',
+        Leave.start_date >= month_start,
+        Leave.start_date < next_month
+    ).scalar() or 0
+    
+    attendance_stats = {
+        'working_days': working_days,
+        'present_days': present_days,
+        'absent_days': absent_days,
+        'leave_days': int(leave_days)
+    }
+    
+    return render_template('view_payslip.html',
+                         payslip=payslip,
+                         employee=employee,
+                         user=user,
+                         attendance_stats=attendance_stats)
+
+@app.route('/api/payslip/<int:payslip_id>/download')
+@login_required
+def download_payslip_pdf(payslip_id):
+    """Download payslip as PDF"""
+    payslip = Payslip.query.get_or_404(payslip_id)
+    employee = User.query.get(payslip.user_id)
+    
+    # Check access
+    user = User.query.get(session.get('user_id'))
+    if user.role not in ['ADMIN', 'PAYROLL_OFFICER'] and payslip.user_id != user.id:
+        return "Unauthorized", 403
+    
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#3498db'),
+        spaceAfter=30,
+        alignment=1
+    )
+    
+    # Title
+    title = Paragraph(f"Salary Slip - {employee.full_name}", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+    
+    # Employee Info
+    info_data = [
+        ['Employee Information', ''],
+        ['Name:', employee.full_name],
+        ['Employee ID:', employee.login_id],
+        ['Department:', employee.department or 'N/A'],
+        ['Position:', employee.job_position or 'N/A'],
+        ['Pay Period:', payslip.payroll_month.strftime('%B %Y')],
+    ]
+    
+    info_table = Table(info_data, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 20))
+    
+    # Earnings
+    earnings_data = [
+        ['Earnings', 'Amount (₹)'],
+        ['Basic Salary', f"{payslip.basic_salary:,.2f}"],
+        ['HRA', f"{payslip.hra:,.2f}"],
+        ['DA', f"{payslip.da:,.2f}"],
+        ['Gross Earnings', f"{payslip.gross_earnings:,.2f}"],
+    ]
+    
+    earnings_table = Table(earnings_data, colWidths=[4*inch, 2*inch])
+    earnings_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.green),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(earnings_table)
+    elements.append(Spacer(1, 20))
+    
+    # Deductions
+    deductions_data = [
+        ['Deductions', 'Amount (₹)'],
+        ['Provident Fund (PF)', f"{payslip.pf:,.2f}"],
+        ['Income Tax', f"{payslip.income_tax:,.2f}"],
+        ['Professional Tax', f"{payslip.professional_tax:,.2f}"],
+        ['Total Deductions', f"{(payslip.pf + payslip.income_tax + payslip.professional_tax):,.2f}"],
+    ]
+    
+    deductions_table = Table(deductions_data, colWidths=[4*inch, 2*inch])
+    deductions_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.red),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(deductions_table)
+    elements.append(Spacer(1, 20))
+    
+    # Net Pay
+    net_data = [
+        ['NET PAY', f"₹ {payslip.net_salary:,.2f}"],
+    ]
+    
+    net_table = Table(net_data, colWidths=[4*inch, 2*inch])
+    net_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#4CAF50')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 16),
+        ('GRID', (0, 0), (-1, -1), 2, colors.black)
+    ]))
+    elements.append(net_table)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'payslip_{employee.login_id}_{payslip.payroll_month.strftime("%B_%Y")}.pdf'
+    )
+
+@app.route('/payroll/salary-adjustments')
+@login_required
+def salary_adjustments():
+    # Put your logic here, e.g.
+    user = User.query.get(session.get('user_id'))
+    adjustments = SalaryAdjustment.query.order_by(SalaryAdjustment.adjustment_date.desc()).all()
+    return render_template('salary_adjustments.html', user=user, adjustments=adjustments)
+
+
+
+
+@app.route('/reports/<report_type>')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def report_detail(report_type):
+    # Render your detailed report here
+    return render_template('report_detail.html', report_type=report_type)
+
+
+@app.route('/payroll/all-payslips')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def all_payslips_page():
+    """All employee payslips page"""
+    user = User.query.get(session.get('user_id'))
+    
+    # Get filters
+    search = request.args.get('search', '')
+    month = request.args.get('month')
+    department = request.args.get('department')
+    status = request.args.get('status')
+    
+    # Build query
+    query = Payslip.query.join(User)
+    
+    if search:
+        query = query.filter(
+            db.or_(
+                User.full_name.ilike(f'%{search}%'),
+                User.login_id.ilike(f'%{search}%')
+            )
+        )
+    if month:
+        month_date = datetime.strptime(month + '-01', '%Y-%m-%d').date()
+        query = query.filter(Payslip.payroll_month == month_date)
+    if department:
+        query = query.filter(User.department == department)
+    if status:
+        query = query.filter(Payslip.status == status)
+    
+    payslips = query.order_by(Payslip.payroll_month.desc()).all()
+    
+    # Calculate statistics
+    total_payslips = len(payslips)
+    processed_count = sum(1 for p in payslips if p.status == 'Processed')
+    draft_count = sum(1 for p in payslips if p.status == 'Draft')
+    total_amount = sum(p.net_salary or 0 for p in payslips)
+    
+    # Get departments for filter
+    departments = db.session.query(User.department).distinct().filter(
+        User.department.isnot(None)
+    ).all()
+    departments = [d[0] for d in departments]
+    
+    return render_template('all_payslips.html',
+                         user=user,
+                         payslips=payslips,
+                         total_payslips=total_payslips,
+                         processed_count=processed_count,
+                         draft_count=draft_count,
+                         total_amount=total_amount,
+                         departments=departments)
+
+@app.route('/api/payslips/export')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def export_payslips():
+    """Export payslips to CSV"""
+    # Get same filters as all_payslips_page
+    search = request.args.get('search', '')
+    month = request.args.get('month')
+    department = request.args.get('department')
+    status = request.args.get('status')
+    
+    # Build query
+    query = Payslip.query.join(User)
+    
+    if search:
+        query = query.filter(
+            db.or_(
+                User.full_name.ilike(f'%{search}%'),
+                User.login_id.ilike(f'%{search}%')
+            )
+        )
+    if month:
+        month_date = datetime.strptime(month + '-01', '%Y-%m-%d').date()
+        query = query.filter(Payslip.payroll_month == month_date)
+    if department:
+        query = query.filter(User.department == department)
+    if status:
+        query = query.filter(Payslip.status == status)
+    
+    payslips = query.order_by(Payslip.payroll_month.desc()).all()
+    
+    # Create CSV
+    output = BytesIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Employee ID', 'Employee Name', 'Department', 'Month',
+        'Basic Salary', 'HRA', 'DA', 'Gross Earnings',
+        'PF', 'Income Tax', 'Professional Tax', 'Net Salary', 'Status'
+    ])
+    
+    # Write data
+    for payslip in payslips:
+        writer.writerow([
+            payslip.employee.login_id,
+            payslip.employee.full_name,
+            payslip.employee.department or '',
+            payslip.payroll_month.strftime('%B %Y'),
+            payslip.basic_salary or 0,
+            payslip.hra or 0,
+            payslip.da or 0,
+            payslip.gross_earnings or 0,
+            payslip.pf or 0,
+            payslip.income_tax or 0,
+            payslip.professional_tax or 0,
+            payslip.net_salary or 0,
+            payslip.status
+        ])
+    
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'payslips_export_{datetime.now().strftime("%Y%m%d")}.csv'
+    )
+# --- Profile & Settings Routes ---
+
+@app.route('/profile')
+@login_required
+def profile():
+    """Employee profile page (own profile)"""
+    user = User.query.get(session.get('user_id'))
+
+    salary_adjustments = SalaryAdjustment.query.filter_by(user_id=user.id).order_by(
+        SalaryAdjustment.adjustment_date.desc()
+    ).all()
+    badges = Badge.query.filter_by(user_id=user.id).all()
+    certifications = Certification.query.filter_by(user_id=user.id).all()
+
+    return render_template('profile.html',
+                           user=user,
+                           salary_adjustments=salary_adjustments,
+                           badges=badges,
+                           certifications=certifications)
+
+@app.route('/settings')
+@login_required
+def settings():
+    """Settings / Account page (own account)"""
+    user = User.query.get(session.get('user_id'))
+    return render_template('settings.html', user=user)
+
+@app.route('/api/settings/change-password', methods=['POST'])
+@login_required
+def change_password():
+    """Change password (own account)"""
+    user = User.query.get(session.get('user_id'))
+    data = request.get_json()
+    old_password = data.get('old_password')
+    new_password = data.get('new_password')
+
+    if not user.check_password(old_password):
+        return jsonify({'error': 'Old password is incorrect'}), 401
+
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify({'message': 'Password changed successfully'}), 200
+
+@app.route('/api/settings/update-profile', methods=['PUT'])
+@login_required
+def update_profile():
+    """Update profile settings (own account)"""
+    user = User.query.get(session.get('user_id'))
+    data = request.get_json()
+    user.phone = data.get('phone', user.phone)
+    user.date_of_birth = data.get('date_of_birth', user.date_of_birth)
+    user.gender = data.get('gender', user.gender)
+    user.nationality = data.get('nationality', user.nationality)
+    db.session.commit()
+    return jsonify({'message': 'Profile updated successfully'}), 200
+
+# --- Reports Routes ---
+
+@app.route('/reports')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def reports():
+    """Reports page (Admin or Payroll Officer)"""
+    user = User.query.get(session.get('user_id'))
+
+    today = datetime.now().date()
+    month_start = today.replace(day=1)
+    departments = db.session.query(User.department).distinct().all()
+
+    attendance_data = {}
+    for dept in departments:
+        if dept[0]:
+            present = Attendance.query.join(User).filter(
+                User.department == dept[0],
+                Attendance.attendance_date >= month_start,
+                Attendance.status == 'Present'
+            ).count()
+            absent = Attendance.query.join(User).filter(
+                User.department == dept[0],
+                Attendance.attendance_date >= month_start,
+                Attendance.status == 'Absent'
+            ).count()
+            late = Attendance.query.join(User).filter(
+                User.department == dept[0],
+                Attendance.attendance_date >= month_start,
+                Attendance.status == 'Late'
+            ).count()
+            total = present + absent + late
+            attendance_pct = (present / total * 100) if total > 0 else 0
+            attendance_data[dept[0]] = {
+                'present': present, 'absent': absent, 'late': late,
+                'percentage': round(attendance_pct, 1)
+            }
+
+    return render_template('reports.html', user=user, attendance_data=attendance_data)
+
+
+# ======================== REPORT GENERATION FUNCTIONS ========================
+
+def generate_attendance_report(start_date, end_date, department=None):
+    """Generate attendance report data"""
+    query = db.session.query(
+        Attendance, User
+    ).join(User).filter(
+        Attendance.attendance_date >= start_date,
+        Attendance.attendance_date <= end_date
+    )
+    
+    if department:
+        query = query.filter(User.department == department)
+    
+    records = query.all()
+    
+    # Calculate statistics
+    total_records = len(records)
+    present = sum(1 for r in records if r[0].status == 'Present')
+    absent = sum(1 for r in records if r[0].status == 'Absent')
+    late = sum(1 for r in records if r[0].status == 'Late')
+    avg_hours = sum(r[0].working_hours or 0 for r in records) / total_records if total_records > 0 else 0
+    
+    summary_stats = [
+        {'icon': '📊', 'value': total_records, 'label': 'Total Records'},
+        {'icon': '✅', 'value': present, 'label': 'Present Days'},
+        {'icon': '❌', 'value': absent, 'label': 'Absent Days'},
+        {'icon': '⏰', 'value': f'{avg_hours:.1f}h', 'label': 'Avg Working Hours'}
+    ]
+    
+    table_headers = ['Date', 'Employee ID', 'Name', 'Department', 'Check In', 'Check Out', 'Hours', 'Status']
+    table_data = []
+    
+    for att, user in records:
+        table_data.append([
+            att.attendance_date.strftime('%d %b %Y'),
+            user.login_id,
+            user.full_name,
+            user.department or '-',
+            att.check_in.strftime('%I:%M %p') if att.check_in else '-',
+            att.check_out.strftime('%I:%M %p') if att.check_out else '-',
+            f'{att.working_hours:.2f}' if att.working_hours else '-',
+            att.status
+        ])
+    
+    return {
+        'summary_stats': summary_stats,
+        'table_headers': table_headers,
+        'table_data': table_data,
+        'show_chart': True,
+        'chart_title': 'Attendance Trends'
+    }
+
+def generate_payroll_report(start_date, end_date, department=None):
+    """Generate payroll report data"""
+    query = db.session.query(
+        Payslip, User
+    ).join(User).filter(
+        Payslip.payroll_month >= start_date,
+        Payslip.payroll_month <= end_date
+    )
+    
+    if department:
+        query = query.filter(User.department == department)
+    
+    records = query.all()
+    
+    # Calculate statistics
+    total_payslips = len(records)
+    total_gross = sum(r[0].gross_earnings or 0 for r in records)
+    total_deductions = sum((r[0].pf or 0) + (r[0].income_tax or 0) + (r[0].professional_tax or 0) for r in records)
+    total_net = sum(r[0].net_salary or 0 for r in records)
+    
+    summary_stats = [
+        {'icon': '💰', 'value': f'₹{total_gross:,.0f}', 'label': 'Total Gross'},
+        {'icon': '💸', 'value': f'₹{total_deductions:,.0f}', 'label': 'Total Deductions'},
+        {'icon': '💵', 'value': f'₹{total_net:,.0f}', 'label': 'Total Net Pay'},
+        {'icon': '👥', 'value': total_payslips, 'label': 'Employees Paid'}
+    ]
+    
+    table_headers = ['Month', 'Employee ID', 'Name', 'Basic Salary', 'HRA', 'Gross', 'Deductions', 'Net Salary']
+    table_data = []
+    
+    for payslip, user in records:
+        deductions = (payslip.pf or 0) + (payslip.income_tax or 0) + (payslip.professional_tax or 0)
+        table_data.append([
+            payslip.payroll_month.strftime('%b %Y'),
+            user.login_id,
+            user.full_name,
+            f'₹{payslip.basic_salary:,.2f}' if payslip.basic_salary else '-',
+            f'₹{payslip.hra:,.2f}' if payslip.hra else '-',
+            f'₹{payslip.gross_earnings:,.2f}' if payslip.gross_earnings else '-',
+            f'₹{deductions:,.2f}',
+            f'₹{payslip.net_salary:,.2f}' if payslip.net_salary else '-'
+        ])
+    
+    return {
+        'summary_stats': summary_stats,
+        'table_headers': table_headers,
+        'table_data': table_data,
+        'show_chart': True,
+        'chart_title': 'Payroll Distribution'
+    }
+
+def generate_employee_report(department=None):
+    """Generate employee report data"""
+    query = User.query.filter(User.is_active == True)
+    
+    if department:
+        query = query.filter(User.department == department)
+    
+    employees = query.all()
+    
+    # Calculate statistics
+    total_employees = len(employees)
+    by_role = {}
+    for emp in employees:
+        by_role[emp.role] = by_role.get(emp.role, 0) + 1
+    
+    summary_stats = [
+        {'icon': '👥', 'value': total_employees, 'label': 'Total Employees'},
+        {'icon': '💼', 'value': by_role.get('EMPLOYEE', 0), 'label': 'Employees'},
+        {'icon': '👔', 'value': by_role.get('HR_OFFICER', 0), 'label': 'HR Officers'},
+        {'icon': '🔧', 'value': by_role.get('ADMIN', 0), 'label': 'Admins'}
+    ]
+    
+    table_headers = ['Employee ID', 'Name', 'Department', 'Position', 'Role', 'Joining Date', 'Email', 'Phone']
+    table_data = []
+    
+    for emp in employees:
+        table_data.append([
+            emp.login_id,
+            emp.full_name,
+            emp.department or '-',
+            emp.job_position or '-',
+            emp.role.replace('_', ' ').title(),
+            emp.date_of_joining.strftime('%d %b %Y') if emp.date_of_joining else '-',
+            emp.email,
+            emp.phone or '-'
+        ])
+    
+    return {
+        'summary_stats': summary_stats,
+        'table_headers': table_headers,
+        'table_data': table_data,
+        'show_chart': False
+    }
+
+def generate_leave_report(start_date, end_date, department=None):
+    """Generate leave report data"""
+    query = db.session.query(
+        Leave, User
+    ).join(User).filter(
+        Leave.start_date >= start_date,
+        Leave.start_date <= end_date
+    )
+    
+    if department:
+        query = query.filter(User.department == department)
+    
+    records = query.all()
+    
+    # Calculate statistics
+    total_leaves = len(records)
+    approved = sum(1 for r in records if r[0].status == 'Approved')
+    pending = sum(1 for r in records if r[0].status == 'Pending')
+    rejected = sum(1 for r in records if r[0].status == 'Rejected')
+    
+    summary_stats = [
+        {'icon': '📋', 'value': total_leaves, 'label': 'Total Requests'},
+        {'icon': '✅', 'value': approved, 'label': 'Approved'},
+        {'icon': '⏳', 'value': pending, 'label': 'Pending'},
+        {'icon': '❌', 'value': rejected, 'label': 'Rejected'}
+    ]
+    
+    table_headers = ['Employee ID', 'Name', 'Leave Type', 'Start Date', 'End Date', 'Days', 'Status', 'Reason']
+    table_data = []
+    
+    for leave, user in records:
+        table_data.append([
+            user.login_id,
+            user.full_name,
+            leave.leave_type,
+            leave.start_date.strftime('%d %b %Y'),
+            leave.end_date.strftime('%d %b %Y'),
+            leave.number_of_days,
+            leave.status,
+            leave.reason[:50] + '...' if leave.reason and len(leave.reason) > 50 else leave.reason or '-'
+        ])
+    
+    return {
+        'summary_stats': summary_stats,
+        'table_headers': table_headers,
+        'table_data': table_data,
+        'show_chart': True,
+        'chart_title': 'Leave Trends'
+    }
+
+def generate_overtime_report(start_date, end_date, department=None):
+    """Generate overtime report data"""
+    query = db.session.query(
+        Attendance, User
+    ).join(User).filter(
+        Attendance.attendance_date >= start_date,
+        Attendance.attendance_date <= end_date,
+        Attendance.working_hours > 8
+    )
+    
+    if department:
+        query = query.filter(User.department == department)
+    
+    records = query.all()
+    
+    # Calculate statistics
+    total_overtime_days = len(records)
+    total_overtime_hours = sum(max(0, (r[0].working_hours or 0) - 8) for r in records)
+    avg_overtime = total_overtime_hours / total_overtime_days if total_overtime_days > 0 else 0
+    
+    summary_stats = [
+        {'icon': '⏰', 'value': total_overtime_days, 'label': 'Overtime Days'},
+        {'icon': '⏱️', 'value': f'{total_overtime_hours:.1f}h', 'label': 'Total OT Hours'},
+        {'icon': '📊', 'value': f'{avg_overtime:.1f}h', 'label': 'Avg OT/Day'},
+        {'icon': '💰', 'value': f'₹{total_overtime_hours * 200:.0f}', 'label': 'Estimated Cost'}
+    ]
+    
+    table_headers = ['Date', 'Employee ID', 'Name', 'Department', 'Working Hours', 'OT Hours']
+    table_data = []
+    
+    for att, user in records:
+        ot_hours = max(0, (att.working_hours or 0) - 8)
+        table_data.append([
+            att.attendance_date.strftime('%d %b %Y'),
+            user.login_id,
+            user.full_name,
+            user.department or '-',
+            f'{att.working_hours:.2f}' if att.working_hours else '-',
+            f'{ot_hours:.2f}'
+        ])
+    
+    return {
+        'summary_stats': summary_stats,
+        'table_headers': table_headers,
+        'table_data': table_data,
+        'show_chart': True,
+        'chart_title': 'Overtime Trends'
+    }
+
+def generate_performance_report(start_date, end_date, department=None):
+    """Generate performance report data (placeholder)"""
+    query = User.query.filter(User.is_active == True)
+    
+    if department:
+        query = query.filter(User.department == department)
+    
+    employees = query.all()
+    
+    summary_stats = [
+        {'icon': '⭐', 'value': len(employees), 'label': 'Employees Evaluated'},
+        {'icon': '🏆', 'value': '85%', 'label': 'Avg Score'},
+        {'icon': '📈', 'value': '12', 'label': 'Top Performers'},
+        {'icon': '📉', 'value': '3', 'label': 'Need Improvement'}
+    ]
+    
+    table_headers = ['Employee ID', 'Name', 'Department', 'Performance Score', 'Attendance %', 'Rating']
+    table_data = []
+    
+    # This is placeholder data - in real scenario, you'd calculate from actual performance metrics
+    for emp in employees[:20]:  # Limit to 20 for demo
+        table_data.append([
+            emp.login_id,
+            emp.full_name,
+            emp.department or '-',
+            f'{85 + (hash(emp.id) % 15)}%',
+            f'{90 + (hash(emp.id) % 10)}%',
+            '⭐' * (3 + (hash(emp.id) % 3))
+        ])
+    
+    return {
+        'summary_stats': summary_stats,
+        'table_headers': table_headers,
+        'table_data': table_data,
+        'show_chart': True,
+        'chart_title': 'Performance Distribution'
+    }
+
+# ======================== DOWNLOAD ROUTES ========================
+
+@app.route('/api/reports/download/<report_type>/pdf')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def download_report_pdf(report_type):
+    """Download report as PDF"""
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    department = request.args.get('department')
+    
+    # Set default dates
+    if not end_date:
+        end_date = datetime.now().date()
+    else:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    if not start_date:
+        start_date = end_date - timedelta(days=30)
+    else:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    # Generate report data
+    if report_type == 'attendance':
+        data = generate_attendance_report(start_date, end_date, department)
+    elif report_type == 'payroll':
+        data = generate_payroll_report(start_date, end_date, department)
+    elif report_type == 'employee':
+        data = generate_employee_report(department)
+    elif report_type == 'leave':
+        data = generate_leave_report(start_date, end_date, department)
+    elif report_type == 'overtime':
+        data = generate_overtime_report(start_date, end_date, department)
+    elif report_type == 'performance':
+        data = generate_performance_report(start_date, end_date, department)
+    else:
+        return "Invalid report type", 404
+    
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#3498db'),
+        spaceAfter=30,
+        alignment=1  # Center
+    )
+    
+    # Title
+    title = Paragraph(f"{report_type.title()} Report", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+    
+    # Date range
+    date_text = Paragraph(
+        f"Period: {start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')}",
+        styles['Normal']
+    )
+    elements.append(date_text)
+    elements.append(Spacer(1, 20))
+    
+    # Summary stats
+    summary_data = [['Metric', 'Value']]
+    for stat in data['summary_stats']:
+        summary_data.append([stat['label'], str(stat['value'])])
+    
+    summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 30))
+    
+    # Detailed table (limit to first 50 rows for PDF)
+    table_data = [data['table_headers']]
+    table_data.extend(data['table_data'][:50])
+    
+    # Adjust column widths based on number of columns
+    col_count = len(data['table_headers'])
+    col_width = 7.5*inch / col_count
+    
+    detail_table = Table(table_data, colWidths=[col_width] * col_count)
+    detail_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(detail_table)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'{report_type}_report_{datetime.now().strftime("%Y%m%d")}.pdf'
+    )
+
+@app.route('/api/reports/download/<report_type>/excel')
+@login_required
+@role_required('ADMIN', 'PAYROLL_OFFICER')
+def download_report_excel(report_type):
+    """Download report as Excel (CSV)"""
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    department = request.args.get('department')
+    
+    # Set default dates
+    if not end_date:
+        end_date = datetime.now().date()
+    else:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    if not start_date:
+        start_date = end_date - timedelta(days=30)
+    else:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    # Generate report data
+    if report_type == 'attendance':
+        data = generate_attendance_report(start_date, end_date, department)
+    elif report_type == 'payroll':
+        data = generate_payroll_report(start_date, end_date, department)
+    elif report_type == 'employee':
+        data = generate_employee_report(department)
+    elif report_type == 'leave':
+        data = generate_leave_report(start_date, end_date, department)
+    elif report_type == 'overtime':
+        data = generate_overtime_report(start_date, end_date, department)
+    elif report_type == 'performance':
+        data = generate_performance_report(start_date, end_date, department)
+    else:
+        return "Invalid report type", 404
+    
+    # Create CSV
+    output = BytesIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([f"{report_type.title()} Report"])
+    writer.writerow([f"Period: {start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')}"])
+    writer.writerow([])
+    
+    # Write summary
+    writer.writerow(['Summary Statistics'])
+    for stat in data['summary_stats']:
+        writer.writerow([stat['label'], stat['value']])
+    writer.writerow([])
+    
+    # Write data table
+    writer.writerow(data['table_headers'])
+    writer.writerows(data['table_data'])
+    
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'{report_type}_report_{datetime.now().strftime("%Y%m%d")}.csv'
+    )
+# --- Error Handlers ---
+
+@app.errorhandler(404)
+def not_found(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('500.html'), 500
 
 def init_db():
     """Create all database tables"""
